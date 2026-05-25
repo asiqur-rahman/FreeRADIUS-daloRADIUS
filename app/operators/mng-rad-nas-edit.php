@@ -1,0 +1,351 @@
+<?php
+/*
+ *********************************************************************************************************
+ * daloRADIUS - RADIUS Web Platform
+ * Copyright (C) 2007 - Liran Tal <liran@lirantal.com> All Rights Reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ *
+ *********************************************************************************************************
+ *
+ * Authors:    Liran Tal <liran@lirantal.com>
+ *             Filippo Lauria <filippo.lauria@iit.cnr.it>
+ *
+ *********************************************************************************************************
+ */
+
+    include("library/checklogin.php");
+    $operator = $_SESSION['operator_user'];
+
+    include('../common/includes/config_read.php');
+    include('library/check_operator_perm.php');
+
+    include_once("lang/main.php");
+    include("../common/includes/validation.php");
+    include("../common/includes/layout.php");
+
+    // init logging variables
+    $log = "visited page: ";
+    $logAction = "";
+    $logDebugSQL = "";
+
+    include('../common/includes/db_open.php');
+    
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $nasname = (array_key_exists('nasname', $_POST) && !empty(str_replace("%", "", trim($_POST['nasname']))))
+                 ? str_replace("%", "", trim($_POST['nasname'])) : "";
+    } else {
+        $nasname = (array_key_exists('nasname', $_REQUEST) && !empty(str_replace("%", "", trim($_REQUEST['nasname']))))
+                 ? str_replace("%", "", trim($_REQUEST['nasname'])) : "";
+    }
+    
+    // check if this nas exists
+    $sql = sprintf("SELECT COUNT(id) FROM %s WHERE nasname='%s'", $configValues['CONFIG_DB_TBL_RADNAS'],
+                                                                  $dbSocket->escapeSimple($nasname));
+    $res = $dbSocket->query($sql);
+    $logDebugSQL .= "$sql;\n";
+    
+    $exists = $res->fetchrow()[0] == 1;
+    
+    if (!$exists) {
+        // we reset the nasname if it does not exist
+        $nasname = "";
+    }
+    
+    
+    // from now on, we can assume that nasname is valid
+    $nasname_enc = (!empty($nasname)) ? htmlspecialchars($nasname, ENT_QUOTES, 'UTF-8') : "";
+    
+    
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (array_key_exists('csrf_token', $_POST) && isset($_POST['csrf_token']) && dalo_check_csrf_token($_POST['csrf_token'])) {
+            $secret = (array_key_exists('secret', $_POST) && !empty(str_replace("%", "", trim($_POST['secret']))))
+                    ? str_replace("%", "", trim($_POST['secret'])) : "";
+    
+            // allow the current DB type to pass validation even if it is a
+            // legacy/custom value not present in $valid_nastypes, so that
+            // re-submitting the edit form does not silently overwrite it
+            $allowed_types = $valid_nastypes;
+            if (!empty($nasname)) {
+                $sql_cur = sprintf("SELECT type FROM %s WHERE nasname='%s' LIMIT 1",
+                                   $configValues['CONFIG_DB_TBL_RADNAS'],
+                                   $dbSocket->escapeSimple($nasname));
+                $res_cur = $dbSocket->query($sql_cur);
+                $logDebugSQL .= "$sql_cur;\n";
+                $row_cur = $res_cur->fetchrow();
+                if ($row_cur && !empty($row_cur[0])) {
+                    $allowed_types[] = $row_cur[0];
+                    $allowed_types = array_unique($allowed_types);
+                }
+            }
+
+            $type = (array_key_exists('type', $_POST) && isset($_POST['type']) &&
+                     in_array($_POST['type'], $allowed_types)) ? $_POST['type'] : "other";
+            
+            $shortname = (array_key_exists('shortname', $_POST) && !empty(str_replace("%", "", trim($_POST['shortname']))))
+                       ? str_replace("%", "", trim($_POST['shortname'])) : "";
+            $ports = (array_key_exists('ports', $_POST) && !empty(trim($_POST['ports'])) &&
+                      intval(trim($_POST['ports'])) >= 1 && intval(trim($_POST['ports'])) <= 65535)
+                   ? intval(trim($_POST['ports'])) : "";
+            
+            $description = (array_key_exists('description', $_POST) && !empty(str_replace("%", "", trim($_POST['description']))))
+                         ? str_replace("%", "", trim($_POST['description'])) : "";
+            $community = (array_key_exists('community', $_POST) && !empty(str_replace("%", "", trim($_POST['community']))))
+                       ? str_replace("%", "", trim($_POST['community'])) : "";
+            $server = (array_key_exists('server', $_POST) && !empty(str_replace("%", "", trim($_POST['server']))))
+                           ? str_replace("%", "", trim($_POST['server'])) : "";
+    
+            if (empty($nasname) || empty($secret)) {
+                // required
+                $failureMsg = sprintf("%s and/or %s are empty or invalid", t('all','NasIPHost'), t('all','NasSecret'));
+                $logAction .= sprintf("Failed editing NAS (%s) on page: ", $failureMsg);
+            } else {
+                
+                $sql = sprintf("UPDATE %s SET shortname='%s', type='%s', ports=%d, secret='%s',
+                                                  server='%s', community='%s', description='%s'
+                                 WHERE nasname='%s'", $configValues['CONFIG_DB_TBL_RADNAS'],
+                               $dbSocket->escapeSimple($shortname), $dbSocket->escapeSimple($type), $ports,
+                               $dbSocket->escapeSimple($secret), $dbSocket->escapeSimple($server),
+                               $dbSocket->escapeSimple($community), $dbSocket->escapeSimple($description),
+                               $dbSocket->escapeSimple($nasname));
+                $res = $dbSocket->query($sql);
+                $logDebugSQL .= "$sql;\n";
+
+                if (!DB::isError($res)) {
+                    $successMsg = sprintf("Edited NAS: <strong>%s</strong>", $nasname_enc);
+                    $successMsg .= '<br><strong>Restart FreeRADIUS for NAS changes to take effect.</strong>';
+                    $logAction .= sprintf("Successfully edited NAS [%s] on page: ", $nasname);
+                } else {
+                    // it seems that operator could not be added
+                    $f = "Failed to add edit NAS [%s] to database";
+                    $failureMsg = sprintf($f, $nasname_enc);
+                    $logAction .= sprintf($f, $nasname);
+                }
+                
+            }
+    
+        } else {
+            // csrf
+            $failureMsg = "CSRF token error";
+            $logAction .= "$failureMsg on page: ";
+        }
+    }
+    
+    
+    if (!empty($nasname)) {
+        $sql = sprintf("SELECT nasname, shortname, type, ports, secret, server, community, description
+                          FROM %s WHERE nasname='%s' LIMIT 1", $configValues['CONFIG_DB_TBL_RADNAS'],
+                                                               $dbSocket->escapeSimple($nasname));
+        $res = $dbSocket->query($sql);
+        $logDebugSQL .= "$sql;\n";
+        
+        $row = $res->fetchrow();
+        
+        list($nasname, $shortname, $type, $ports, $secret, $server, $community, $description) = $row;
+        
+    } else {
+        $failureMsg = sprintf("%s is invalid", t('all','NasIPHost'));
+        $logAction .= sprintf("Requested editing invalid NAS (%s) on page: ", $failureMsg);
+    }
+    
+    include('../common/includes/db_close.php');
+    
+    // print HTML prologue
+    $title = t('Intro','mngradnasedit.php');
+    $help = t('helpPage','mngradnasedit');
+    
+    print_html_prologue($title, $langCode);
+
+    if (isset($nasname_enc)) {
+        $title .= " :: $nasname_enc";
+    } 
+
+    print_title_and_help($title, $help);
+    
+    
+    include_once('include/management/actionMessages.php');
+    
+    
+    if (!empty($nasname)) {
+        
+        // set form component descriptors
+        $input_descriptors0 = array();
+                
+        $input_descriptors0[] = array(
+                                        "name" => "nasname",
+                                        "type" => "hidden",
+                                        "value" => ((isset($nasname)) ? $nasname : "")
+                                     );
+                                     
+        $input_descriptors0[] = array(
+                                        "name" => "nasname_presentation",
+                                        "caption" => t('all','NasIPHost'),
+                                        "type" => "text",
+                                        "value" => ((isset($nasname)) ? $nasname : ""),
+                                        "disabled" => true,
+                                        "tooltipText" => "Enter the IP address or hostname of the NAS device."
+                                     );
+                                     
+        $input_descriptors0[] = array(
+                                        "name" => "secret",
+                                        "caption" => t('all','NasSecret'),
+                                        "type" => "text",
+                                        "value" => ((isset($secret)) ? $secret : ""),
+                                        "tooltipText" => "Enter the shared secret used for RADIUS communication."
+                                     );
+                                     
+        // preserve legacy/custom NAS type values loaded from DB
+        $nastype_options = $valid_nastypes;
+        $nastype_selected = (isset($type) && $type !== "") ? $type : "other";
+        $nastype_tooltip = "Select the NAS vendor type from the predefined list.";
+
+        if ($nastype_selected !== "other" && !in_array($nastype_selected, $valid_nastypes)) {
+            // DB contains a type not in the standard list — build an associative
+            // options map so the legacy value is shown and stays selected
+            $nastype_options = array();
+            $nastype_options[$nastype_selected] = $nastype_selected . " (legacy)";
+            foreach ($valid_nastypes as $nt) {
+                $nastype_options[$nt] = $nt;
+            }
+            $nastype_tooltip = "The current type is not in the standard list. "
+                             . "It will be preserved unless you select a different value.";
+        }
+
+        $input_descriptors0[] = array(
+                                        "name" => "type",
+                                        "caption" => t('all','NasType'),
+                                        "type" => "select",
+                                        "options" => $nastype_options,
+                                        "selected_value" => $nastype_selected,
+                                        "tooltipText" => $nastype_tooltip
+                                     );
+                                     
+        $input_descriptors0[] = array(
+                                        "name" => "shortname",
+                                        "caption" => t('all','NasShortname'),
+                                        "type" => "text",
+                                        "value" => ((isset($shortname)) ? $shortname : ""),
+                                        "tooltipText" => "A friendly short name to identify this NAS."
+                                     );
+
+        
+        $input_descriptors1 = array();
+        
+        $input_descriptors1[] = array(
+                                        "name" => "ports",
+                                        "caption" => t('all','NasPorts'),
+                                        "type" => "number",
+                                        "min" => "1",
+                                        "max" => "65535",
+                                        "value" => ((isset($ports)) ? $ports : ""),
+                                        "tooltipText" => "e.g. 1700, 3799, etc.",
+                                     );
+                                     
+        $input_descriptors1[] = array(
+                                        "name" => "community",
+                                        "caption" => t('all','NasCommunity'),
+                                        "type" => "text",
+                                        "value" => ((isset($community)) ? $community : ""),
+                                        "tooltipText" => "SNMP community string for querying the NAS (optional)."
+                                     );
+                                     
+        $input_descriptors1[] = array(
+                                        "name" => "server",
+                                        "caption" => t('all','NasVirtualServer'),
+                                        "type" => "text",
+                                        "value" => ((isset($server)) ? $server : ""),
+                                        "tooltipText" => "FreeRADIUS virtual server to process requests from this NAS (optional)."
+                                     );
+                                     
+        $input_descriptors1[] = array(
+                                        "name" => "description",
+                                        "caption" => t('all','NasDescription'),
+                                        "type" => "textarea",
+                                        "content" => ((isset($description)) ? $description : ""),
+                                        "tooltipText" => "Additional details or notes about this NAS device."
+                                     );
+
+        $input_descriptors2 = array();
+        $input_descriptors2[] = array(
+                                        "name" => "csrf_token",
+                                        "type" => "hidden",
+                                        "value" => dalo_csrf_token(),
+                                     );
+
+        $input_descriptors2[] = array(
+                                        "type" => "submit",
+                                        "name" => "submit",
+                                        "value" => t('buttons','apply')
+                                     );
+
+        // fieldset
+        $fieldset0_descriptor = array(
+                                        "title" => t('title','NASInfo'),
+                                     );
+                                     
+        $fieldset1_descriptor = array(
+                                        "title" => t('title','NASAdvanced'),
+                                     );
+
+
+        // set navbar stuff
+        $navkeys = array( 'NASInfo', 'NASAdvanced' );
+
+        // print navbar controls
+        print_tab_header($navkeys);
+        
+        open_form();
+        
+        // open tab wrapper
+        open_tab_wrapper();
+        
+        // open 0-th tab (shown)
+        open_tab($navkeys, 0, true);
+        
+        // open 0-th fieldset
+        open_fieldset($fieldset0_descriptor);
+
+        foreach ($input_descriptors0 as $input_descriptor) {
+            print_form_component($input_descriptor);
+        }
+        
+        close_fieldset();
+        
+        close_tab($navkeys, 0);
+        
+        // open 1-st tab
+        open_tab($navkeys, 1);
+        
+        // open 1-th fieldset
+        open_fieldset($fieldset1_descriptor);
+        
+        foreach ($input_descriptors1 as $input_descriptor) {
+            print_form_component($input_descriptor);
+        }
+        
+        close_fieldset();
+        
+        close_tab($navkeys, 1);
+        
+        // close tab wrapper
+        close_tab_wrapper();
+        
+        foreach ($input_descriptors2 as $input_descriptor) {
+            print_form_component($input_descriptor);
+        }
+        
+        close_form();
+        
+    }
+
+    include('include/config/logging.php');
+    print_footer_and_html_epilogue();
+    
+?>
