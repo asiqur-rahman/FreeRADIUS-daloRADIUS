@@ -97,10 +97,38 @@ function init_database {
     echo "Database initialization for daloRADIUS completed."
 }
 
+function mysql_auth_ok {
+    mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" "$MYSQL_DATABASE" -e "SELECT 1" >/dev/null 2>&1
+}
+
+function mysql_auth_fail_help {
+    local mysql_err
+    mysql_err=$(mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" "$MYSQL_DATABASE" -e "SELECT 1" 2>&1 || true)
+    echo "ERROR: Cannot connect to MySQL at $MYSQL_HOST:$MYSQL_PORT as user '$MYSQL_USER' (database: $MYSQL_DATABASE)." >&2
+    if [ -n "$mysql_err" ]; then
+        echo "$mysql_err" >&2
+    fi
+    echo "MYSQL_HOST is the database server. In 'Access denied for user@X', X is the client IP MariaDB sees (your Docker host), not MYSQL_HOST." >&2
+    echo "On the database server, grant this user for that client IP or for '%', for example:" >&2
+    echo "  GRANT ALL ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'<client-ip>' IDENTIFIED BY '<password>';" >&2
+    echo "  FLUSH PRIVILEGES;" >&2
+    exit 1
+}
+
+function require_mysql_auth {
+    if ! mysql_auth_ok; then
+        mysql_auth_fail_help
+    fi
+}
+
 function table_exists {
     local table_name="$1"
     local escaped_table_name
     local count
+
+    if ! mysql_auth_ok; then
+        return 1
+    fi
 
     escaped_table_name=$(printf '%s' "$table_name" | sed -e "s/'/''/g")
     count=$(mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" --batch --skip-column-names "$MYSQL_DATABASE" <<EOSQL
@@ -109,8 +137,11 @@ FROM information_schema.tables
 WHERE table_schema = DATABASE()
   AND table_name = '$escaped_table_name';
 EOSQL
-)
+) || return 1
 
+    case "$count" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
     test "$count" -gt 0
 }
 
@@ -154,7 +185,8 @@ EOSQL
 
 function wait_for_mysql {
     echo -n "Waiting for mysql ($MYSQL_HOST)..."
-    while ! mysqladmin --defaults-extra-file="$MYSQL_DEFAULTS_FILE" ping --silent; do
+    while ! mysql_auth_ok; do
+        echo " retrying..."
         sleep "$MYSQL_WAIT_INTERVAL"
     done
     echo "ok"
@@ -177,6 +209,7 @@ else
 fi
 
 wait_for_mysql
+require_mysql_auth
 
 DB_LOCK=/data/.db_init_done
 if test -f "$DB_LOCK"; then

@@ -46,10 +46,38 @@ function mysql_radius {
 	mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" "$MYSQL_DATABASE" "$@"
 }
 
+function mysql_auth_ok {
+	mysql_radius -e "SELECT 1" >/dev/null 2>&1
+}
+
+function mysql_auth_fail_help {
+	local mysql_err
+	mysql_err=$(mysql_radius -e "SELECT 1" 2>&1 || true)
+	echo "ERROR: Cannot connect to MySQL at $MYSQL_HOST:$MYSQL_PORT as user '$MYSQL_USER' (database: $MYSQL_DATABASE)." >&2
+	if [ -n "$mysql_err" ]; then
+		echo "$mysql_err" >&2
+	fi
+	echo "MYSQL_HOST is the database server. In 'Access denied for user@X', X is the client IP MariaDB sees (your Docker host), not MYSQL_HOST." >&2
+	echo "On the database server, grant this user for that client IP or for '%', for example:" >&2
+	echo "  GRANT ALL ON \`$MYSQL_DATABASE\`.* TO '$MYSQL_USER'@'<client-ip>' IDENTIFIED BY '<password>';" >&2
+	echo "  FLUSH PRIVILEGES;" >&2
+	exit 1
+}
+
+function require_mysql_auth {
+	if ! mysql_auth_ok; then
+		mysql_auth_fail_help
+	fi
+}
+
 function table_exists {
 	local table_name="$1"
 	local escaped_table_name
 	local count
+
+	if ! mysql_auth_ok; then
+		return 1
+	fi
 
 	escaped_table_name=$(printf '%s' "$table_name" | sed -e "s/'/''/g")
 	count=$(mysql_radius --batch --skip-column-names <<EOSQL
@@ -58,8 +86,11 @@ FROM information_schema.tables
 WHERE table_schema = DATABASE()
   AND table_name = '$escaped_table_name';
 EOSQL
-)
+) || return 1
 
+	case "$count" in
+		''|*[!0-9]*) return 1 ;;
+	esac
 	test "$count" -gt 0
 }
 
@@ -250,15 +281,18 @@ function init_database {
 }
 
 function wait_for_mysql {
-	while ! mysqladmin --defaults-extra-file="$MYSQL_DEFAULTS_FILE" ping --silent; do
-		echo "Waiting for mysql ($MYSQL_HOST)..."
+	echo -n "Waiting for mysql ($MYSQL_HOST)..."
+	while ! mysql_auth_ok; do
+		echo " retrying..."
 		sleep "$MYSQL_WAIT_INTERVAL"
 	done
+	echo "ok"
 }
 
 echo "Starting freeradius..."
 create_mysql_defaults_file
 wait_for_mysql
+require_mysql_auth
 
 INIT_LOCK=/data/.freeradius_init_done
 if test -f "$INIT_LOCK"; then
