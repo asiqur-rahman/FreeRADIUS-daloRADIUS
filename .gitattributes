@@ -1,0 +1,29 @@
+# Default: respect platform conventions.
+* text=auto eol=lf
+
+# Shell scripts must be LF, always — the postgres init container runs
+# them via bash, which interprets CR as part of the line and silently
+# fails complex heredocs. This file is checked into a repo developed
+# on Windows; without this, `git checkout` will rewrite to CRLF.
+*.sh           text eol=lf
+*.bash         text eol=lf
+Dockerfile     text eol=lf
+
+# SQL also needs LF for the postgres entrypoint.
+*.sql          text eol=lf
+
+# Config files consumed inside Linux containers.
+*.conf         text eol=lf
+*.yml          text eol=lf
+*.yaml         text eol=lf
+
+# FreeRADIUS module/site configs are extensionless — list explicitly.
+infra/freeradius/raddb/mods-available/* text eol=lf
+infra/freeradius/raddb/sites-available/* text eol=lf
+
+# Binaries — never normalise.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.docx binary
+*.svg text eol=lf

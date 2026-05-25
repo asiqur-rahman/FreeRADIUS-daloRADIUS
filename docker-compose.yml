@@ -1,0 +1,80 @@
+services:
+  # ─────────────────────────────────────────────────────────────────────
+  # PostgreSQL — single instance, holds both app schema and RADIUS tables.
+  # Two roles are provisioned by init scripts (app_user, radius_user) so
+  # the API and FreeRADIUS access the DB with distinct, least-privilege
+  # credentials — per the architecture doc trust-boundary rules.
+  # ─────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: radius-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-radius}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radius_dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-radius}
+      APP_DB_USER: ${APP_DB_USER:-app_user}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app_user_dev_password}
+      RADIUS_DB_USER: ${RADIUS_DB_USER:-radius_user}
+      RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-radius_user_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radius} -d ${POSTGRES_DB:-radius}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Redis — sessions, rate-limit counters, BullMQ job queue.
+  # ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: radius-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────────────
+  # FreeRADIUS 3.x — 802.1X auth server with SQL backend.
+  #
+  # Built from infra/freeradius/Dockerfile so our customisations
+  # (clients.conf, sql mod, default + inner-tunnel sites) overlay
+  # the upstream raddb instead of masking it via a bind mount.
+  # The upstream image generates dev EAP certs under /etc/raddb/certs
+  # on first boot; rebuild the image to refresh them.
+  # ─────────────────────────────────────────────────────────────────────
+  freeradius:
+    build:
+      context: ./infra/freeradius
+      dockerfile: Dockerfile
+    image: radius-platform/freeradius:dev
+    container_name: radius-freeradius
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RADIUS_DB_HOST: postgres
+      RADIUS_DB_PORT: 5432
+      RADIUS_DB_NAME: ${POSTGRES_DB:-radius}
+      RADIUS_DB_USER: ${RADIUS_DB_USER:-radius_user}
+      RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-radius_user_dev_password}
+    ports:
+      - "1812:1812/udp"   # auth
+      - "1813:1813/udp"   # accounting
+      - "3799:3799/udp"   # CoA
+
+volumes:
+  postgres_data:
+  redis_data:

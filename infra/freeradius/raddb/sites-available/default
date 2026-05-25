@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────────────
+#  default virtual server — handles outer EAP, accounting, post-auth.
+#
+#  Trimmed-down version of the upstream default. The platform-specific
+#  bits live in inner-tunnel (PEAP inner method) and in the SQL queries
+#  that read radcheck/radreply.
+# ─────────────────────────────────────────────────────────────────────
+server default {
+
+    listen {
+        type = auth
+        ipaddr = *
+        port = 0
+        limit { max_connections = 16  lifetime = 0  idle_timeout = 30 }
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 0
+    }
+
+    listen {
+        type = auth
+        ipaddr = *
+        port = 0
+        proto = tcp
+        limit { max_connections = 16  lifetime = 0  idle_timeout = 30 }
+    }
+
+    authorize {
+        filter_username
+        preprocess
+        suffix
+        eap {
+            ok = return
+        }
+        # SQL lookup for users with no EAP wrapper (rare — PEAP/EAP-TLS
+        # handle the real auth in the inner-tunnel server).
+        sql
+        expiration
+        logintime
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP   { pap }
+        Auth-Type CHAP  { chap }
+        Auth-Type MS-CHAP { mschap }
+        eap
+    }
+
+    preacct { preprocess  acct_unique  suffix }
+
+    accounting {
+        detail
+        sql
+        exec
+        attr_filter.accounting_response
+    }
+
+    session { sql }
+
+    post-auth {
+        update {
+            &reply: += &session-state:
+        }
+        sql
+        exec
+
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+            eap
+            sql
+        }
+    }
+
+    pre-proxy { }
+    post-proxy { eap }
+}

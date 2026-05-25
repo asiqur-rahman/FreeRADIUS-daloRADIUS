@@ -1,0 +1,44 @@
+node_modules/
+dist/
+build/
+.turbo/
+.cache/
+coverage/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# Prisma
+apps/api/prisma/migrations/dev.db*
+
+# logs
+*.log
+logs/
+pnpm-debug.log*
+npm-debug.log*
+
+# editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# docker volumes
+.docker/
+infra/postgres/data/
+infra/freeradius/raddb/certs/server.*
+infra/freeradius/raddb/certs/ca.*
+infra/freeradius/raddb/certs/dh
+infra/freeradius/raddb/certs/random
+
+# build artifacts
+*.tsbuildinfo
+.vite/
+
+# misc
+_arch.txt
+_arch_unpacked/
+_doc.xml

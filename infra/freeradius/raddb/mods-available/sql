@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────
+#  SQL module — PostgreSQL backend for FreeRADIUS.
+#
+#  Connection values come from the freeradius container environment
+#  (see docker-compose.yml). FreeRADIUS expands $ENV{VAR} at config-
+#  load time, which keeps secrets out of this file and out of the
+#  Docker image.
+# ─────────────────────────────────────────────────────────────────────
+sql {
+    driver  = "rlm_sql_postgresql"
+    dialect = "postgresql"
+
+    server    = "$ENV{RADIUS_DB_HOST}"
+    port      = "$ENV{RADIUS_DB_PORT}"
+    login     = "$ENV{RADIUS_DB_USER}"
+    password  = "$ENV{RADIUS_DB_PASSWORD}"
+    radius_db = "$ENV{RADIUS_DB_NAME}"
+
+    # Standard upstream table names — do not change.
+    acct_table1      = "radacct"
+    acct_table2      = "radacct"
+    postauth_table   = "radpostauth"
+    authcheck_table  = "radcheck"
+    authreply_table  = "radreply"
+    groupcheck_table = "radgroupcheck"
+    groupreply_table = "radgroupreply"
+    usergroup_table  = "radusergroup"
+
+    # Read NAS clients from the `nas` table (UI-managed). Without
+    # read_clients, FreeRADIUS only sees clients.conf entries.
+    read_clients  = yes
+    client_table  = "nas"
+
+    # Default queries shipped with the FreeRADIUS package.
+    $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+
+    pool {
+        start        = 2
+        min          = 2
+        max          = 10
+        spare        = 3
+        uses         = 0
+        retry_delay  = 30
+        lifetime     = 0
+        idle_timeout = 60
+    }
+}

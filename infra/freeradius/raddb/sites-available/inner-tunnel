@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────
+#  inner-tunnel virtual server — runs inside the PEAP TLS tunnel.
+#  This is where the real username + MSCHAPv2 challenge/response is
+#  evaluated against radcheck (NT-Password row written by the API's
+#  RadiusPolicyService).
+#
+#  MAC-binding snippet from the architecture appendix is included
+#  in post-auth — it enforces Calling-Station-Id against the
+#  user_devices table maintained by the platform.
+# ─────────────────────────────────────────────────────────────────────
+server inner-tunnel {
+
+    listen {
+        ipaddr = 127.0.0.1
+        port = 18120
+        type = auth
+    }
+
+    authorize {
+        filter_username
+        update control { &Proxy-To-Realm := LOCAL }
+        chap
+        mschap
+        suffix
+        update control { &Auth-Type := Accept }
+        eap { ok = return }
+        files
+        sql
+        expiration
+        logintime
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP    { pap }
+        Auth-Type CHAP   { chap }
+        Auth-Type MS-CHAP { mschap }
+        Auth-Type MS-CHAP-V2 { mschap }
+        eap
+    }
+
+    session { sql }
+
+    post-auth {
+        # ── MAC binding (architecture doc, appendix 11.1) ────────────
+        # If the user has any bound MACs, require an exact match.
+        if ("%{sql: SELECT 1 FROM user_devices ud \
+               JOIN users u ON u.id = ud.user_id \
+               WHERE u.username = '%{User-Name}' LIMIT 1}" == "1") {
+            if ("%{tolower:%{outer.request:Calling-Station-Id}}" != \
+                "%{sql: SELECT lower(ud.mac) FROM user_devices ud \
+                  JOIN users u ON u.id = ud.user_id \
+                  WHERE u.username = '%{User-Name}' \
+                    AND lower(ud.mac) = lower('%{outer.request:Calling-Station-Id}') \
+                  LIMIT 1}") {
+                update reply { Reply-Message := "MAC not authorized for this user" }
+                reject
+            }
+        }
+
+        sql
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+            update outer.session-state { &Module-Failure-Message := &request:Module-Failure-Message }
+            sql
+        }
+    }
+
+    pre-proxy { }
+    post-proxy { eap }
+}
