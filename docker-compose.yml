@@ -1,0 +1,43 @@
+services:
+  radius:
+    image: lirantal/dalofreeradius:latest
+    container_name: radius
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: Asia/Dhaka
+
+      MYSQL_HOST: 10.10.10.20
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: radius
+      MYSQL_USER: radius
+      MYSQL_PASSWORD: change_this_db_password
+
+      DEFAULT_CLIENT_SECRET: change_this_radius_shared_secret
+      FREERADIUS_SQL_TLS: disabled
+    volumes:
+      - ./data/freeradius:/data
+      - ./logs/freeradius:/var/log/freeradius
+
+  radius-web:
+    image: lirantal/daloradius:latest
+    container_name: radius-web
+    restart: unless-stopped
+    depends_on:
+      - radius
+    ports:
+      - "8080:80"
+    environment:
+      TZ: Asia/Dhaka
+
+      MYSQL_HOST: 10.10.10.20
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: radius
+      MYSQL_USER: radius
+      MYSQL_PASSWORD: change_this_db_password
+
+      DEFAULT_CLIENT_SECRET: change_this_radius_shared_secret
+      DEFAULT_FREERADIUS_SERVER: 127.0.0.1
+    volumes:
+      - ./data/daloradius:/data
+      - ./logs/freeradius:/var/log/freeradius
