@@ -206,6 +206,19 @@ export async function purgeUserFromRadius(tx: Tx, username: string) {
   await deleteRadcheckRows(tx, username);
 }
 
+/**
+ * Remove all RADIUS-side state for a group: its policy attributes
+ * (radgroupcheck / radgroupreply) and every membership row pointing
+ * at it (radusergroup). Called from the group-delete route — must be
+ * the *only* code path that writes those tables outside the user-sync
+ * helpers above.
+ */
+export async function purgeGroupFromRadius(tx: Tx, groupName: string) {
+  await tx.$executeRaw`DELETE FROM radgroupcheck WHERE groupname = ${groupName};`;
+  await tx.$executeRaw`DELETE FROM radgroupreply WHERE groupname = ${groupName};`;
+  await tx.$executeRaw`DELETE FROM radusergroup  WHERE groupname = ${groupName};`;
+}
+
 // FreeRADIUS expects: "31 Dec 2026 23:59:59"
 function formatRadiusDate(d: Date): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { prisma } from "../../db.js";
 import { audit } from "../../lib/audit.js";
 import { NotFound } from "../../lib/errors.js";
-import { syncGroupToRadius } from "../../services/radiusPolicy.js";
+import { purgeGroupFromRadius, syncGroupToRadius } from "../../services/radiusPolicy.js";
 import { disconnectForPolicyChange } from "../../services/sessions.js";
 import { config } from "../../config.js";
 
@@ -90,9 +90,9 @@ const adminGroups: FastifyPluginAsync = async (app) => {
     await prisma.$transaction(async (tx) => {
       const group = await tx.group.findUnique({ where: { id } });
       if (!group) throw NotFound("Group not found");
-      await tx.$executeRaw`DELETE FROM radgroupcheck WHERE groupname = ${group.name};`;
-      await tx.$executeRaw`DELETE FROM radgroupreply WHERE groupname = ${group.name};`;
-      await tx.$executeRaw`DELETE FROM radusergroup WHERE groupname = ${group.name};`;
+      // All RADIUS-side writes must go through RadiusPolicyService —
+      // see CLAUDE.md and the service module docstring for the rule.
+      await purgeGroupFromRadius(tx, group.name);
       await tx.group.delete({ where: { id } });
       await audit({ tx, actorId, action: "group_delete", targetType: "group", targetId: id, req });
     });
