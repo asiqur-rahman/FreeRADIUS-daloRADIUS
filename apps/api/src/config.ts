@@ -50,6 +50,19 @@ const schema = z.object({
 
   ALERT_NAS_SILENT_MINUTES: z.coerce.number().int().positive().default(15),
   ALERT_REJECT_THRESHOLD_5M: z.coerce.number().int().positive().default(20),
+
+  // ── FreeRADIUS rlm_rest hook ─────────────────────────────────────
+  // Shared secret checked on every /radius/* request (X-Radius-Hook-Secret).
+  RADIUS_HOOK_SECRET: z.string().min(16).default("dev-hook-secret-change-in-prod"),
+
+  // VLAN IDs returned to the AP via Tunnel-Private-Group-ID.
+  QUARANTINE_VLAN_ID: z.coerce.number().int().positive().default(99),
+  NORMAL_VLAN_ID:     z.coerce.number().int().positive().default(10),
+
+  // ── Telegram bot ────────────────────────────────────────────────
+  // Get BOT_TOKEN from @BotFather.  Get ADMIN_CHAT_ID by messaging @userinfobot.
+  TELEGRAM_BOT_TOKEN:     z.string().optional(),
+  TELEGRAM_ADMIN_CHAT_ID: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;

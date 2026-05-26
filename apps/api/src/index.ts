@@ -2,6 +2,7 @@
 import { buildServer } from "./server.js";
 import { config } from "./config.js";
 import { prisma } from "./db.js";
+import { startTelegramPolling, stopTelegramPolling } from "./lib/telegram.js";
 
 async function main() {
   const c = config();
@@ -10,6 +11,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "shutting down");
     try {
+      stopTelegramPolling();
       await app.close();
       await prisma.$disconnect();
       process.exit(0);
@@ -23,6 +25,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   await app.listen({ host: c.API_HOST, port: c.API_PORT });
+  startTelegramPolling();
 }
 
 main().catch((err) => {

@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────────────
+#  REST module — delegates user/device lookup and post-auth logging
+#  to the platform's Fastify hook API (apps/api).
+#
+#  ENV vars injected by docker-compose:
+#    HOOK_HOST     hostname of the api container  (e.g. "api")
+#    HOOK_PORT     HTTP port                       (default 4000)
+#    HOOK_SECRET   shared secret for X-Radius-Hook-Secret header
+# ─────────────────────────────────────────────────────────────────────
+
+rest {
+    connect_uri = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}"
+
+    # ── authorize ────────────────────────────────────────────────────
+    #  Called inside the PEAP inner-tunnel after the TLS handshake.
+    #  Returns NT-Password in control{} and VLAN attributes in reply{}.
+    #  HTTP 4xx → unknown user or rejected device → FreeRADIUS rejects.
+    authorize {
+        uri    = "${...connect_uri}/api/v1/radius/authorize"
+        method = 'post'
+        body   = 'json'
+        data   = '{"username":"%{User-Name}","mac":"%{outer.request:Calling-Station-Id}","nasIp":"%{NAS-IP-Address}","nasIdentifier":"%{NAS-Identifier}","calledStationId":"%{Called-Station-Id}"}'
+
+        header {
+            name  = "X-Radius-Hook-Secret"
+            value = "$ENV{HOOK_SECRET}"
+        }
+
+        tls = ${...tls}
+    }
+
+    # ── post-auth ────────────────────────────────────────────────────
+    #  Called after successful MSCHAPv2 authentication.
+    #  The hook registers the device on first connect and fires the
+    #  Telegram approval notification to the admin.
+    post-auth {
+        uri    = "${...connect_uri}/api/v1/radius/post-auth"
+        method = 'post'
+        body   = 'json'
+        data   = '{"username":"%{User-Name}","mac":"%{outer.request:Calling-Station-Id}","nasIp":"%{NAS-IP-Address}","vlan":"%{reply:Tunnel-Private-Group-ID}"}'
+
+        header {
+            name  = "X-Radius-Hook-Secret"
+            value = "$ENV{HOOK_SECRET}"
+        }
+
+        tls = ${...tls}
+    }
+
+    # ── connection pool ──────────────────────────────────────────────
+    pool {
+        start        = 2
+        min          = 2
+        max          = 10
+        spare        = 3
+        uses         = 0
+        retry_delay  = 30
+        lifetime     = 0
+        idle_timeout = 60
+    }
+}

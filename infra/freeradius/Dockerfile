@@ -13,12 +13,13 @@ FROM freeradius/freeradius-server:3.2.5
 # upstream package re-creates a symlink: copy after, then re-link.
 COPY raddb/clients.conf                          /etc/raddb/clients.conf
 COPY raddb/mods-available/sql                    /etc/raddb/mods-available/sql
+COPY raddb/mods-available/rest                   /etc/raddb/mods-available/rest
 COPY raddb/sites-available/default               /etc/raddb/sites-available/default
 COPY raddb/sites-available/inner-tunnel          /etc/raddb/sites-available/inner-tunnel
 
-# Make sure the sql module is enabled and our sites are linked.
-# `-f` so re-build is idempotent if the upstream image already linked.
+# Enable modules and link sites. -f makes the RUN layer idempotent.
 RUN ln -sf /etc/raddb/mods-available/sql           /etc/raddb/mods-enabled/sql \
+ && ln -sf /etc/raddb/mods-available/rest          /etc/raddb/mods-enabled/rest \
  && ln -sf /etc/raddb/sites-available/default      /etc/raddb/sites-enabled/default \
  && ln -sf /etc/raddb/sites-available/inner-tunnel /etc/raddb/sites-enabled/inner-tunnel
 

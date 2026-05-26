@@ -55,6 +55,8 @@ enum AuditAction {
   login_failure
   mfa_enable
   mfa_disable
+  device_approve
+  device_reject
 }
 
 enum AuthEventType {
@@ -62,6 +64,12 @@ enum AuthEventType {
   login_fail
   radius_accept
   radius_reject
+}
+
+enum DeviceStatus {
+  pending
+  approved
+  rejected
 }
 
 // ── Users & credentials ───────────────────────────────────────────────
@@ -87,7 +95,8 @@ model User {
   devices   UserDevice[]
   auditLogs AuditLog[]   @relation("AuditActor")
   events    AuthEvent[]
-  tokens    ApiToken[]
+  tokens            ApiToken[]
+  approvalDecisions DeviceApproval[] @relation("ApprovalDecisions")
 
   @@index([status])
   @@map("users")
@@ -118,15 +127,39 @@ model UserDevice {
   label           String?   @db.VarChar(80)
   isPrimary       Boolean   @default(false)
   certFingerprint String?   @db.VarChar(64)
-  learnedAt       DateTime  @default(now())
+  learnedAt       DateTime     @default(now())
   verifiedAt      DateTime?
   lastSeenAt      DateTime?
+  status          DeviceStatus @default(pending)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approvals DeviceApproval[]
 
   @@unique([userId, mac])
   @@index([mac])
+  @@index([status])
   @@map("user_devices")
+}
+
+// ── Device approval workflow ─────────────────────────────────────────
+//   One approval record per decision event, linked to the device.
+//   Created when a new device connects (status: pending), updated when
+//   an admin approves or rejects via Telegram or the dashboard.
+
+model DeviceApproval {
+  id          String       @id @default(cuid())
+  deviceId    String
+  requestedAt DateTime     @default(now())
+  decidedAt   DateTime?
+  decidedBy   String?      // admin user id — null for Telegram decisions
+  status      DeviceStatus @default(pending)
+  notes       String?      @db.VarChar(500)
+
+  device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  admin  User?      @relation("ApprovalDecisions", fields: [decidedBy], references: [id])
+
+  @@index([status, requestedAt])
+  @@map("device_approvals")
 }
 
 // ── Groups & policy ──────────────────────────────────────────────────

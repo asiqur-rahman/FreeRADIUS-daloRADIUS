@@ -1,40 +1,43 @@
 # ─────────────────────────────────────────────────────────────────────
 #  inner-tunnel virtual server — runs inside the PEAP TLS tunnel.
-#  This is where the real username + MSCHAPv2 challenge/response is
-#  evaluated against radcheck (NT-Password row written by the API's
-#  RadiusPolicyService).
 #
-#  MAC-binding snippet from the architecture appendix is included
-#  in post-auth — it enforces Calling-Station-Id against the
-#  user_devices table maintained by the platform.
+#  authorize:  calls the platform REST hook to get NT-Password and the
+#              VLAN assignment (quarantine for new/pending, normal for
+#              approved devices).  HTTP 4xx → reject.
+#
+#  post-auth:  copies VLAN attrs to the outer reply; notifies the hook
+#              on success so it can register new devices and send the
+#              Telegram approval request.
 # ─────────────────────────────────────────────────────────────────────
 server inner-tunnel {
 
     listen {
         ipaddr = 127.0.0.1
-        port = 18120
-        type = auth
+        port   = 18120
+        type   = auth
     }
 
     authorize {
         filter_username
         update control { &Proxy-To-Realm := LOCAL }
         chap
-        mschap
+        mschap          # detects MS-CHAP attrs, sets Auth-Type := MS-CHAP
         suffix
-        update control { &Auth-Type := Accept }
-        eap { ok = return }
-        files
-        sql
+
+        # Platform REST hook: returns NT-Password in control{} and
+        # Tunnel-* VLAN attrs in reply{}.  On HTTP 4xx (unknown user or
+        # rejected device) the module returns "fail" and we reject below.
+        rest
+        if (rest != ok && rest != updated) {
+            reject
+        }
+
         expiration
         logintime
-        pap
     }
 
     authenticate {
-        Auth-Type PAP    { pap }
-        Auth-Type CHAP   { chap }
-        Auth-Type MS-CHAP { mschap }
+        Auth-Type MS-CHAP    { mschap }
         Auth-Type MS-CHAP-V2 { mschap }
         eap
     }
@@ -42,30 +45,28 @@ server inner-tunnel {
     session { sql }
 
     post-auth {
-        # ── MAC binding (architecture doc, appendix 11.1) ────────────
-        # If the user has any bound MACs, require an exact match.
-        if ("%{sql: SELECT 1 FROM user_devices ud \
-               JOIN users u ON u.id = ud.\"userId\" \
-               WHERE u.username = '%{User-Name}' LIMIT 1}" == "1") {
-            if ("%{sql: SELECT 1 FROM user_devices ud \
-                  JOIN users u ON u.id = ud.\"userId\" \
-                  WHERE u.username = '%{User-Name}' \
-                    AND regexp_replace(lower(ud.mac), '[^0-9a-f]', '', 'g') = \
-                        regexp_replace(lower('%{outer.request:Calling-Station-Id}'), '[^0-9a-f]', '', 'g') \
-                  LIMIT 1}" != "1") {
-                update reply { Reply-Message := "MAC not authorized for this user" }
-                reject
-            }
+        # Propagate the VLAN assignment from inner reply to the outer
+        # Access-Accept that the AP will actually read.
+        update outer.reply {
+            Tunnel-Type             += &reply:Tunnel-Type
+            Tunnel-Medium-Type      += &reply:Tunnel-Medium-Type
+            Tunnel-Private-Group-ID := &reply:Tunnel-Private-Group-ID
         }
 
+        # Notify hook of successful auth.
+        # Hook creates device record on first connect and fires Telegram.
+        rest
         sql
+
         Post-Auth-Type REJECT {
             attr_filter.access_reject
-            update outer.session-state { &Module-Failure-Message := &request:Module-Failure-Message }
-            sql
+            update outer.session-state {
+                &Module-Failure-Message := &request:Module-Failure-Message
+            }
+            sql     # log rejected auths to radpostauth; no Telegram spam
         }
     }
 
-    pre-proxy { }
+    pre-proxy  { }
     post-proxy { eap }
 }
