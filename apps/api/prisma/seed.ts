@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────
 import { PrismaClient } from "@prisma/client";
 import { hashPassword, ntHash } from "../src/lib/password.js";
+import { syncGroupToRadius, syncUserToRadius } from "../src/services/radiusPolicy.js";
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,7 @@ async function main() {
     },
   });
 
-  await prisma.group.upsert({
+  const guest = await prisma.group.upsert({
     where: { name: "Guest" },
     update: {},
     create: {
@@ -51,12 +52,12 @@ async function main() {
   // mandates Argon2id at rest + NT-hash for RADIUS sync; both are
   // produced in a single transaction below.
   const adminUsername = "admin";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "admin123!";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "admin1234!";
 
   const passwordHashArgon2id = await hashPassword(adminPassword);
   const nthash = ntHash(adminPassword);
 
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { username: adminUsername },
     update: {},
     create: {
@@ -76,6 +77,12 @@ async function main() {
         create: { groupId: staff.id, priority: 1 },
       },
     },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await syncGroupToRadius(tx, staff.id);
+    await syncGroupToRadius(tx, guest.id);
+    await syncUserToRadius(tx, admin.id);
   });
 
   console.log("Seed complete.");

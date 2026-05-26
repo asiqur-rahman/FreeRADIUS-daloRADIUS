@@ -9,6 +9,23 @@ import { prisma } from "../../db.js";
 import { audit } from "../../lib/audit.js";
 import { NotFound } from "../../lib/errors.js";
 import { syncGroupToRadius } from "../../services/radiusPolicy.js";
+import { disconnectForPolicyChange } from "../../services/sessions.js";
+import { config } from "../../config.js";
+
+async function disconnectMembersIfEnabled(groupId: string, actorId: string, req: Parameters<typeof audit>[0]["req"]) {
+  if (!config().COA_DISCONNECT_ON_GROUP_POLICY_CHANGE) return;
+  const members = await prisma.userGroup.findMany({ where: { groupId }, select: { userId: true } });
+  await Promise.all(
+    members.map((member) =>
+      disconnectForPolicyChange({
+        userId: member.userId,
+        actorId,
+        reason: "group_policy_change",
+        req,
+      }),
+    ),
+  );
+}
 
 const GroupBody = z.object({
   name: z.string().min(2).max(64).regex(/^[a-zA-Z0-9 _.-]+$/),
@@ -60,12 +77,16 @@ const adminGroups: FastifyPluginAsync = async (app) => {
       await audit({ tx, actorId, action: "group_update", targetType: "group", targetId: id, req });
       return group;
     });
+    await disconnectMembersIfEnabled(id, actorId, req);
     return updated;
   });
 
   app.delete<{ Params: { id: string } }>("/groups/:id", async (req) => {
     const actorId = req.currentUser!.sub;
     const { id } = req.params;
+    const members = config().COA_DISCONNECT_ON_GROUP_POLICY_CHANGE
+      ? await prisma.userGroup.findMany({ where: { groupId: id }, select: { userId: true } })
+      : [];
     await prisma.$transaction(async (tx) => {
       const group = await tx.group.findUnique({ where: { id } });
       if (!group) throw NotFound("Group not found");
@@ -75,6 +96,16 @@ const adminGroups: FastifyPluginAsync = async (app) => {
       await tx.group.delete({ where: { id } });
       await audit({ tx, actorId, action: "group_delete", targetType: "group", targetId: id, req });
     });
+    await Promise.all(
+      members.map((member) =>
+        disconnectForPolicyChange({
+          userId: member.userId,
+          actorId,
+          reason: "group_deleted",
+          req,
+        }),
+      ),
+    );
     return { ok: true };
   });
 
@@ -97,6 +128,7 @@ const adminGroups: FastifyPluginAsync = async (app) => {
       });
       return attr;
     });
+    await disconnectMembersIfEnabled(id, actorId, req);
     return created;
   });
 
@@ -118,6 +150,7 @@ const adminGroups: FastifyPluginAsync = async (app) => {
           req,
         });
       });
+      await disconnectMembersIfEnabled(id, actorId, req);
       return { ok: true };
     },
   );

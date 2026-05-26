@@ -45,14 +45,14 @@ server inner-tunnel {
         # ── MAC binding (architecture doc, appendix 11.1) ────────────
         # If the user has any bound MACs, require an exact match.
         if ("%{sql: SELECT 1 FROM user_devices ud \
-               JOIN users u ON u.id = ud.user_id \
+               JOIN users u ON u.id = ud.\"userId\" \
                WHERE u.username = '%{User-Name}' LIMIT 1}" == "1") {
-            if ("%{tolower:%{outer.request:Calling-Station-Id}}" != \
-                "%{sql: SELECT lower(ud.mac) FROM user_devices ud \
-                  JOIN users u ON u.id = ud.user_id \
+            if ("%{sql: SELECT 1 FROM user_devices ud \
+                  JOIN users u ON u.id = ud.\"userId\" \
                   WHERE u.username = '%{User-Name}' \
-                    AND lower(ud.mac) = lower('%{outer.request:Calling-Station-Id}') \
-                  LIMIT 1}") {
+                    AND regexp_replace(lower(ud.mac), '[^0-9a-f]', '', 'g') = \
+                        regexp_replace(lower('%{outer.request:Calling-Station-Id}'), '[^0-9a-f]', '', 'g') \
+                  LIMIT 1}" != "1") {
                 update reply { Reply-Message := "MAC not authorized for this user" }
                 reject
             }

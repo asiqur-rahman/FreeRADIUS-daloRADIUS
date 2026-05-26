@@ -1,16 +1,22 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Users, Wifi, Shield, Activity, AlertTriangle, CheckCircle2, XCircle, Search,
-  MoreVertical, Plus, Filter, Download, Bell, Settings, LogOut, ChevronRight,
-  Radio, Server, Lock, Eye, Trash2, Edit3, RefreshCw, ArrowUpRight, ArrowDownRight,
-  Power, FileText, Calendar, Globe, Smartphone, Laptop, Tablet, Zap, Clock,
-  TrendingUp, AlertCircle, Network, Database, KeyRound, ShieldCheck, ChevronDown,
+  Users, Wifi, Shield, Activity, AlertTriangle, CheckCircle2, Search,
+  MoreVertical, Plus, Download, Bell, Settings, LogOut, ChevronRight,
+  Radio, Server, Lock, Edit3, RefreshCw, ArrowUpRight, ArrowDownRight,
+  Power, FileText, Globe, Smartphone, Laptop, Tablet,
+  AlertCircle, Database, KeyRound, ShieldCheck,
   Home, UsersRound, Layers, Cpu, BookOpen, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { LiveNasView } from '../views/LiveNasView';
+import { LiveSessionsView } from '../views/LiveSessionsView';
+import { LiveOperationsOverview } from '../views/LiveOperationsOverview';
+import { LiveAuditView } from '../views/LiveAuditView';
+import { LiveUsersView } from '../views/LiveUsersView';
+import { LiveGroupsView } from '../views/LiveGroupsView';
+import { LiveSettingsView } from '../views/LiveSettingsView';
 import {
-  LineChart, Line, AreaChart, Area, BarChart, Bar,
+  AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 
@@ -153,7 +159,8 @@ function AlertCard({ alert }) {
   );
 }
 
-function Overview() {
+function Overview({ live = true }) {
+  if (live) return <LiveOperationsOverview/>;
   return (
     <div className="space-y-6">
       {/* Stat row */}
@@ -271,13 +278,14 @@ function Overview() {
   );
 }
 
-function UsersView() {
+function UsersView({ live = true }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
   const filtered = useMemo(() => users.filter(u =>
     (filter === 'all' || u.status === filter) &&
     (u.name.toLowerCase().includes(q.toLowerCase()) || u.username.includes(q.toLowerCase()) || u.email.includes(q.toLowerCase()))
   ), [q, filter]);
+  if (live) return <LiveUsersView/>;
 
   return (
     <div className="space-y-4">
@@ -373,7 +381,8 @@ function DeviceIcon({ device }) {
   return <Laptop className="w-3.5 h-3.5"/>;
 }
 
-function SessionsView() {
+function SessionsView({ live = true }) {
+  if (live) return <LiveSessionsView />;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -463,7 +472,8 @@ function SessionsView() {
   );
 }
 
-function GroupsView() {
+function GroupsView({ live = true }) {
+  if (live) return <LiveGroupsView/>;
   const groups = [
     { name: 'Staff', users: 412, vlan: 20, sessionTimeout: '8h', simulUse: 5, color: 'bg-emerald-500' },
     { name: 'Engineering', users: 184, vlan: 30, sessionTimeout: '12h', simulUse: 8, color: 'bg-indigo-500' },
@@ -520,7 +530,8 @@ function GroupsView() {
   );
 }
 
-function NasView() {
+function NasView({ live = true }) {
+  if (live) return <LiveNasView/>;
   const nas = [
     { name: 'AP-HQ-F1-01', ip: '10.40.1.1', site: 'HQ-Floor1', type: 'Ubiquiti U6-Pro', status: 'online', clients: 23 },
     { name: 'AP-HQ-F1-02', ip: '10.40.1.2', site: 'HQ-Floor1', type: 'Ubiquiti U6-Pro', status: 'online', clients: 18 },
@@ -586,7 +597,8 @@ function NasView() {
   );
 }
 
-function AuditView() {
+function AuditView({ live = true }) {
+  if (live) return <LiveAuditView/>;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -622,7 +634,8 @@ function AuditView() {
   );
 }
 
-function SettingsView() {
+function SettingsView({ live = true }) {
+  if (live) return <LiveSettingsView/>;
   return (
     <div className="space-y-4 max-w-3xl">
       <div>
@@ -744,7 +757,7 @@ export default function AdminDashboard() {
             {view === 'users' && <UsersView/>}
             {view === 'sessions' && <SessionsView/>}
             {view === 'groups' && <GroupsView/>}
-            {view === 'nas' && <LiveNasView/>}
+            {view === 'nas' && <NasView/>}
             {view === 'audit' && <AuditView/>}
             {view === 'settings' && <SettingsView/>}
           </div>

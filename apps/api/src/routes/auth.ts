@@ -11,6 +11,7 @@ import { prisma } from "../db.js";
 import { config } from "../config.js";
 import { verifyPassword } from "../lib/password.js";
 import { Unauthorized } from "../lib/errors.js";
+import { verifyTotp } from "../lib/totp.js";
 import type { LoginResponse, UserSummary } from "@app/shared";
 import type { AuthTokenPayload } from "../plugins/auth.js";
 
@@ -40,7 +41,7 @@ function toSummary(u: Awaited<ReturnType<typeof loadUserWithGroups>>): UserSumma
 
 function loadUserWithGroups(username: string) {
   return prisma.user.findUnique({
-    where: { username },
+    where: { username: username.toLowerCase() },
     include: { secret: true, groups: { include: { group: true } } },
   });
 }
@@ -49,7 +50,7 @@ const auth: FastifyPluginAsync = async (app) => {
   // ── POST /auth/login ────────────────────────────────────────────
   app.post("/auth/login", async (req, reply) => {
     const c = config();
-    const { username, password } = LoginBody.parse(req.body);
+    const { username, password, totpCode } = LoginBody.parse(req.body);
 
     const user = await loadUserWithGroups(username);
     // Constant-time-ish: always run an argon2 verify so an attacker
@@ -65,14 +66,30 @@ const auth: FastifyPluginAsync = async (app) => {
       await verifyPassword(dummyHash, password);
     }
 
-    if (!user || !user.secret || !ok) {
+    if (user?.secret?.lockedUntil && user.secret.lockedUntil > new Date()) {
       await prisma.authEvent.create({
-        data: {
-          username,
-          type: "login_fail",
-          source: "web",
-          metadata: { reason: "bad_credentials", ip: req.ip },
-        },
+        data: { userId: user.id, username: user.username, type: "login_fail", source: "web", metadata: { reason: "locked", ip: req.ip } },
+      });
+      throw Unauthorized("Account temporarily locked");
+    }
+
+    if (!user || !user.secret || !ok) {
+      if (user?.secret) {
+        const attempts = user.secret.failedAttempts + 1;
+        const lockAt = config().LOGIN_MAX_FAILURES;
+        await prisma.userSecret.update({
+          where: { userId: user.id },
+          data: {
+            failedAttempts: attempts,
+            lockedUntil:
+              attempts >= lockAt
+                ? new Date(Date.now() + config().LOGIN_LOCKOUT_MINUTES * 60_000)
+                : null,
+          },
+        });
+      }
+      await prisma.authEvent.create({
+        data: { userId: user?.id, username: user?.username ?? username, type: "login_fail", source: "web", metadata: { reason: "bad_credentials", ip: req.ip } },
       });
       throw Unauthorized("Invalid credentials");
     }
@@ -83,12 +100,17 @@ const auth: FastifyPluginAsync = async (app) => {
     if (user.validUntil && user.validUntil < new Date()) {
       throw Unauthorized("Account expired");
     }
+    if (c.REQUIRE_ADMIN_MFA && user.role === "admin" && !user.mfaEnabled) {
+      throw Unauthorized("Administrator MFA enrollment is required");
+    }
 
-    // MFA: deferred to Phase 5. Stub the response shape so the web app
-    // can branch on `mfaRequired`.
     if (user.mfaEnabled) {
-      // TODO(phase-5): validate TOTP, then issue tokens.
-      throw Unauthorized("MFA not yet implemented");
+      if (!user.mfaSecret || !totpCode || !verifyTotp(user.mfaSecret, totpCode)) {
+        await prisma.authEvent.create({
+          data: { userId: user.id, username: user.username, type: "login_fail", source: "web", metadata: { reason: "invalid_mfa", ip: req.ip } },
+        });
+        throw Unauthorized(totpCode ? "Verification code is incorrect" : "Verification code is required");
+      }
     }
 
     const accessPayload: AuthTokenPayload = {
@@ -97,7 +119,7 @@ const auth: FastifyPluginAsync = async (app) => {
       role: user.role,
       typ: "access",
     };
-    const refreshPayload: AuthTokenPayload = { ...accessPayload, typ: "refresh" };
+    const refreshPayload: AuthTokenPayload = { ...accessPayload, typ: "refresh", tokenVersion: user.secret.tokenVersion };
 
     const accessToken = await reply.jwtSign(accessPayload, { expiresIn: c.ACCESS_TOKEN_TTL });
     const refreshToken = await reply.jwtSign(refreshPayload, { expiresIn: c.REFRESH_TOKEN_TTL });
@@ -115,6 +137,10 @@ const auth: FastifyPluginAsync = async (app) => {
       prisma.user.update({
         where: { id: user.id },
         data: { lastLoginAt: new Date() },
+      }),
+      prisma.userSecret.update({
+        where: { userId: user.id },
+        data: { failedAttempts: 0, lockedUntil: null },
       }),
       prisma.authEvent.create({
         data: {
@@ -143,7 +169,10 @@ const auth: FastifyPluginAsync = async (app) => {
     if (payload.typ !== "refresh") throw Unauthorized("Invalid token type");
 
     const user = await loadUserWithGroups(payload.username);
-    if (!user || user.status !== "active") throw Unauthorized();
+    if (!user || !user.secret || user.status !== "active") throw Unauthorized();
+    if (payload.tokenVersion === undefined || payload.tokenVersion !== user.secret.tokenVersion) {
+      throw Unauthorized("Refresh token has been revoked");
+    }
 
     const next: AuthTokenPayload = {
       sub: user.id,
@@ -154,7 +183,7 @@ const auth: FastifyPluginAsync = async (app) => {
     const accessToken = await reply.jwtSign(next, { expiresIn: c.ACCESS_TOKEN_TTL });
 
     // Rotate the refresh token too.
-    const rotated: AuthTokenPayload = { ...next, typ: "refresh" };
+    const rotated: AuthTokenPayload = { ...next, typ: "refresh", tokenVersion: user.secret.tokenVersion };
     const refreshToken = await reply.jwtSign(rotated, { expiresIn: c.REFRESH_TOKEN_TTL });
     reply.setCookie("refresh_token", refreshToken, {
       httpOnly: true,
@@ -169,7 +198,15 @@ const auth: FastifyPluginAsync = async (app) => {
   });
 
   // ── POST /auth/logout ───────────────────────────────────────────
-  app.post("/auth/logout", async (_req, reply) => {
+  app.post("/auth/logout", async (req, reply) => {
+    try {
+      const payload = await req.jwtVerify<AuthTokenPayload>({ onlyCookie: true });
+      if (payload.typ === "refresh") {
+        await prisma.userSecret.update({ where: { userId: payload.sub }, data: { tokenVersion: { increment: 1 } } });
+      }
+    } catch {
+      // A missing or expired cookie is already effectively logged out.
+    }
     reply.clearCookie("refresh_token", { path: "/api/v1/auth" });
     return { ok: true };
   });

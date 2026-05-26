@@ -12,6 +12,9 @@ import { hashPassword, ntHash } from "../../lib/password.js";
 import { audit } from "../../lib/audit.js";
 import { BadRequest, NotFound } from "../../lib/errors.js";
 import { changeUserPassword, syncUserToRadius } from "../../services/radiusPolicy.js";
+import { disconnectForPolicyChange } from "../../services/sessions.js";
+import { config } from "../../config.js";
+import { assertPasswordNotBreached } from "../../lib/passwordPolicy.js";
 import type { Paginated, UserSummary } from "@app/shared";
 
 // ── Schemas ────────────────────────────────────────────────────────
@@ -136,6 +139,7 @@ const adminUsers: FastifyPluginAsync = async (app) => {
     const body = CreateUserBody.parse(req.body);
     const actorId = req.currentUser!.sub;
 
+    await assertPasswordNotBreached(body.password);
     const passwordHashArgon2id = await hashPassword(body.password);
     const nthash = ntHash(body.password);
 
@@ -220,6 +224,18 @@ const adminUsers: FastifyPluginAsync = async (app) => {
       return after!;
     });
 
+    if (
+      config().COA_DISCONNECT_ON_USER_POLICY_CHANGE &&
+      (body.status !== undefined || body.validUntil !== undefined || body.groupIds !== undefined)
+    ) {
+      await disconnectForPolicyChange({
+        userId: id,
+        actorId,
+        reason: "user_policy_change",
+        req,
+      });
+    }
+
     return toSummary(updated);
   });
 
@@ -231,6 +247,7 @@ const adminUsers: FastifyPluginAsync = async (app) => {
 
     if (newPassword.length < 10) throw BadRequest("Password too short");
 
+    await assertPasswordNotBreached(newPassword);
     await changeUserPassword({
       userId: id,
       newPassword,
@@ -275,6 +292,15 @@ const adminUsers: FastifyPluginAsync = async (app) => {
         req,
       });
     });
+
+    if (config().COA_DISCONNECT_ON_USER_POLICY_CHANGE) {
+      await disconnectForPolicyChange({
+        userId: id,
+        actorId,
+        reason: "user_suspended",
+        req,
+      });
+    }
 
     return { ok: true };
   });

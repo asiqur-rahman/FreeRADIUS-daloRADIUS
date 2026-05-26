@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────
 //  Self-service routes (/api/v1/me/...).
-//  Phase 1 ships password change only; devices/sessions arrive in
-//  Phase 3 alongside the device-management UI.
+//  Password change remains here; Phase 3 device and session routes are
+//  registered alongside this plugin in meDevices.ts.
 // ─────────────────────────────────────────────────────────────────────
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -10,6 +10,7 @@ import { verifyPassword } from "../lib/password.js";
 import { BadRequest, Unauthorized } from "../lib/errors.js";
 import { changeUserPassword } from "../services/radiusPolicy.js";
 import { audit } from "../lib/audit.js";
+import { assertPasswordNotBreached } from "../lib/passwordPolicy.js";
 
 const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1),
@@ -32,6 +33,7 @@ const me: FastifyPluginAsync = async (app) => {
     const ok = await verifyPassword(secret.passwordHashArgon2id, currentPassword);
     if (!ok) throw Unauthorized("Current password is incorrect");
 
+    await assertPasswordNotBreached(newPassword);
     await changeUserPassword({
       userId,
       newPassword,

@@ -16,13 +16,16 @@
 //  Phase-1 scope: password change → radcheck.NT-Password sync,
 //  user create/disable → radcheck rows + radusergroup mapping,
 //  group attribute write-through → radgroupcheck / radgroupreply.
-//  CoA dispatch is a stub; Phase 3 wires up radclient subprocess.
+//  Phase 3 CoA dispatch lives in sessions.ts/coa.ts; automatic policy
+//  triggers after account mutations remain to be configured.
 // ─────────────────────────────────────────────────────────────────────
 import type { FastifyRequest } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { hashPassword, ntHash } from "../lib/password.js";
 import { NotFound } from "../lib/errors.js";
+import { config } from "../config.js";
+import { disconnectForPolicyChange } from "./sessions.js";
 
 type Tx = Prisma.TransactionClient;
 
@@ -94,6 +97,7 @@ export async function changeUserPassword(opts: PasswordChangeOpts) {
         ntHash: nthash,
         passwordChangedAt: new Date(),
         mustChangePassword: opts.mustChange ?? false,
+        tokenVersion: { increment: 1 },
         failedAttempts: 0,
         lockedUntil: null,
       },
@@ -102,6 +106,7 @@ export async function changeUserPassword(opts: PasswordChangeOpts) {
         passwordHashArgon2id: argon2id,
         ntHash: nthash,
         mustChangePassword: opts.mustChange ?? false,
+        tokenVersion: 1,
       },
     });
 
@@ -112,7 +117,14 @@ export async function changeUserPassword(opts: PasswordChangeOpts) {
   });
 
   // ── side-effects ───────────────────────────────────────────────
-  // TODO(phase-3): coaDisconnectAllSessions(opts.userId).catch(log)
+  if (config().COA_DISCONNECT_ON_PASSWORD_CHANGE) {
+    await disconnectForPolicyChange({
+      userId: opts.userId,
+      actorId: opts.actorId,
+      reason: "password_change",
+      req: opts.req,
+    });
+  }
 }
 
 /**
@@ -226,10 +238,4 @@ export async function syncNasToRadius(tx: Tx, nasId: string) {
 
 export async function purgeNasFromRadius(tx: Tx, nasname: string) {
   await tx.$executeRaw`DELETE FROM nas WHERE nasname = ${nasname};`;
-}
-
-// ── CoA stub ───────────────────────────────────────────────────────
-// Phase 3 will replace this with a real `radclient` subprocess call.
-export async function coaDisconnect(_username: string): Promise<{ sent: boolean }> {
-  return { sent: false };
 }

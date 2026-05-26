@@ -5,6 +5,11 @@
 // ─────────────────────────────────────────────────────────────────────
 import { z } from "zod";
 
+const envBoolean = z.preprocess(
+  (value) => (value === "true" ? true : value === "false" ? false : value),
+  z.boolean(),
+);
+
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
@@ -20,7 +25,7 @@ const schema = z.object({
 
   COOKIE_SECRET: z.string().min(32, "COOKIE_SECRET must be at least 32 chars"),
   COOKIE_DOMAIN: z.string().optional(),
-  COOKIE_SECURE: z.coerce.boolean().default(false),
+  COOKIE_SECURE: envBoolean.default(false),
 
   CORS_ORIGINS: z
     .string()
@@ -31,9 +36,20 @@ const schema = z.object({
   ARGON2_TIME: z.coerce.number().int().positive().default(3),
   ARGON2_PARALLELISM: z.coerce.number().int().positive().default(4),
 
-  COA_SHARED_SECRET: z.string().default("testing123"),
-  COA_HOST: z.string().default("127.0.0.1"),
-  COA_PORT: z.coerce.number().int().positive().default(3799),
+  MFA_ENCRYPTION_KEY: z.string().min(32).default("dev_mfa_encryption_key_change_before_use_2026"),
+  REQUIRE_ADMIN_MFA: envBoolean.default(false),
+  LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
+  LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+  HIBP_CHECK_ENABLED: envBoolean.default(false),
+  HIBP_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
+
+  COA_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+  COA_DISCONNECT_ON_PASSWORD_CHANGE: envBoolean.default(true),
+  COA_DISCONNECT_ON_USER_POLICY_CHANGE: envBoolean.default(true),
+  COA_DISCONNECT_ON_GROUP_POLICY_CHANGE: envBoolean.default(false),
+
+  ALERT_NAS_SILENT_MINUTES: z.coerce.number().int().positive().default(15),
+  ALERT_REJECT_THRESHOLD_5M: z.coerce.number().int().positive().default(20),
 });
 
 export type Config = z.infer<typeof schema>;

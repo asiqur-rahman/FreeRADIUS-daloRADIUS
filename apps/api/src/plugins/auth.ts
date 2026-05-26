@@ -36,6 +36,7 @@ export interface AuthTokenPayload {
   role: UserRole;
   // 'refresh' tokens carry tokenVersion; absent on access tokens.
   typ: "access" | "refresh";
+  tokenVersion?: number;
 }
 
 const plugin: FastifyPluginAsync = async (app) => {

@@ -19,6 +19,11 @@ import adminNasRoutes from "./routes/admin/nas.js";
 import adminSiteRoutes from "./routes/admin/sites.js";
 import adminCertRoutes from "./routes/admin/certs.js";
 import meRoutes from "./routes/me.js";
+import meDeviceRoutes from "./routes/meDevices.js";
+import adminSessionRoutes from "./routes/admin/sessions.js";
+import adminOperationRoutes from "./routes/admin/operations.js";
+import mfaRoutes from "./routes/mfa.js";
+import { Forbidden } from "./lib/errors.js";
 
 export async function buildServer(opts: FastifyServerOptions = {}) {
   const c = config();
@@ -49,6 +54,13 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
   });
   await app.register(errorHandler);
   await app.register(authPlugin);
+  app.addHook("preHandler", async (req) => {
+    if (!["POST", "PATCH", "DELETE"].includes(req.method)) return;
+    const origin = req.headers.origin;
+    if (origin && !c.CORS_ORIGINS.includes(origin)) {
+      throw Forbidden("Cross-origin state change rejected");
+    }
+  });
 
   // ── Routes ───────────────────────────────────────────────────────
   await app.register(health);
@@ -56,11 +68,15 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
     async (api) => {
       await api.register(authRoutes);
       await api.register(meRoutes);
+      await api.register(meDeviceRoutes);
+      await api.register(mfaRoutes);
       await api.register(adminUserRoutes, { prefix: "/admin" });
       await api.register(adminGroupRoutes, { prefix: "/admin" });
       await api.register(adminNasRoutes, { prefix: "/admin" });
       await api.register(adminSiteRoutes, { prefix: "/admin" });
       await api.register(adminCertRoutes, { prefix: "/admin" });
+      await api.register(adminSessionRoutes, { prefix: "/admin" });
+      await api.register(adminOperationRoutes, { prefix: "/admin" });
     },
     { prefix: "/api/v1" },
   );

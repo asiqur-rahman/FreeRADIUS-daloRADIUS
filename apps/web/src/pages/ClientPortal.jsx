@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import {
   Wifi, Smartphone, Laptop, Tablet, Shield, Key, Clock, MapPin, ChevronRight,
-  CheckCircle2, AlertCircle, Plus, Trash2, Edit3, Copy, Eye, EyeOff, Download,
-  HelpCircle, Bell, LogOut, User, Settings, ArrowRight, Lock, Calendar, Activity,
-  Globe, Zap, Info, ShieldCheck, RefreshCw, X, Apple, Monitor
+  AlertCircle, Plus, Trash2, Edit3, Eye, EyeOff, Download,
+  HelpCircle, Bell, LogOut, User, ArrowRight, Activity,
+  Info, ShieldCheck, X, Apple, Monitor
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { SelfServiceDevices } from '../views/SelfServiceDevices';
+import { LivePortalOverview } from '../views/LivePortalOverview';
+import { LiveSecurityView } from '../views/LiveSecurityView';
+import { LiveProfileView } from '../views/LiveProfileView';
 
 // ─── DATA ──────────────────────────────────────────────────────────────────
 const me = {
@@ -53,7 +57,8 @@ function Tab({ active, onClick, icon: Icon, label }) {
 }
 
 // ─── VIEWS ─────────────────────────────────────────────────────────────────
-function OverviewTab() {
+function OverviewTab({ live = true }) {
+  if (live) return <LivePortalOverview/>;
   return (
     <div className="space-y-6">
       {/* Hero connection card */}
@@ -178,8 +183,9 @@ function OverviewTab() {
   );
 }
 
-function DevicesTab() {
+function DevicesTab({ live = true }) {
   const [showAdd, setShowAdd] = useState(false);
+  if (live) return <SelfServiceDevices/>;
 
   return (
     <div className="space-y-6">
@@ -265,8 +271,9 @@ function DevicesTab() {
   );
 }
 
-function SecurityTab() {
+function SecurityTab({ live = true }) {
   const [showPwd, setShowPwd] = useState(false);
+  if (live) return <LiveSecurityView/>;
 
   return (
     <div className="space-y-6">
@@ -368,7 +375,8 @@ function SecurityTab() {
   );
 }
 
-function ProfileTab() {
+function ProfileTab({ live = true }) {
+  if (live) return <LiveProfileView/>;
   return (
     <div className="space-y-6 max-w-2xl">
       <div>

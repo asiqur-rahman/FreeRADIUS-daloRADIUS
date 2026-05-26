@@ -6,7 +6,8 @@
 //  are *derived* from these tables and written exclusively through the
 //  RadiusPolicyService.
 //
-//  Phase-1 scope only. Devices, sessions, alerts arrive in Phase 3+.
+//  Phase 3 reads FreeRADIUS-managed sessions from radacct while device
+//  bindings are application-owned through UserDevice below.
 // ─────────────────────────────────────────────────────────────────────
 
 generator client {
@@ -76,7 +77,7 @@ model User {
   validFrom   DateTime?
   validUntil  DateTime?
   mfaEnabled  Boolean    @default(false)
-  mfaSecret   String?    @db.VarChar(64)
+  mfaSecret   String?    @db.VarChar(255)
   lastLoginAt DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -98,6 +99,7 @@ model UserSecret {
   ntHash               String   @db.VarChar(32) // 16-byte MD4 hex
   passwordChangedAt    DateTime @default(now())
   mustChangePassword   Boolean  @default(false)
+  tokenVersion         Int      @default(0)
   failedAttempts       Int      @default(0)
   lockedUntil          DateTime?
 

@@ -17,3 +17,4 @@ export const NotFound = (msg = "Not found") => new AppError(404, "not_found", ms
 export const Conflict = (msg: string) => new AppError(409, "conflict", msg);
 export const BadRequest = (msg: string, details?: unknown) =>
   new AppError(400, "bad_request", msg, details);
+export const ServiceUnavailable = (msg: string) => new AppError(503, "service_unavailable", msg);

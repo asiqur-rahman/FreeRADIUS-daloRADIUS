@@ -150,3 +150,114 @@ export interface EapCertificate {
   daysUntilExpiry: number;
   severity: CertSeverity;
 }
+
+// -- Devices and accounting sessions ----------------------------------------
+
+export interface UserDevice {
+  id: string;
+  mac: string;
+  label: string | null;
+  isPrimary: boolean;
+  certFingerprint: string | null;
+  learnedAt: string;
+  verifiedAt: string | null;
+  lastSeenAt: string | null;
+}
+
+export interface CreateDeviceRequest {
+  mac: string;
+  label?: string | null;
+  currentPassword: string;
+}
+
+export interface UpdateDeviceRequest {
+  label?: string | null;
+  isPrimary?: boolean;
+}
+
+export interface RadiusSession {
+  id: string;
+  acctSessionId: string;
+  username: string;
+  nasIp: string;
+  nasName: string | null;
+  siteName: string | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  stoppedAt: string | null;
+  durationSeconds: string;
+  inputOctets: string;
+  outputOctets: string;
+  callingStationId: string;
+  calledStationId: string;
+  framedIpAddress: string | null;
+  terminateCause: string;
+  deviceLabel: string | null;
+}
+
+export interface CoaResult {
+  sent: boolean;
+  acknowledged: boolean;
+  outcome: "ack" | "nack" | "timeout" | "invalid_response" | "not_configured" | "send_error";
+  message: string;
+}
+
+export interface SessionDisconnectResponse {
+  ok: boolean;
+  sessionId: string;
+  result: CoaResult;
+}
+
+// -- Operations and observability -------------------------------------------
+
+export type AlertSeverity = "critical" | "warning" | "info";
+
+export interface OperationalAlert {
+  id: string;
+  severity: AlertSeverity;
+  title: string;
+  detail: string;
+  observedAt: string;
+}
+
+export interface OperationsOverview {
+  activeUsers: number;
+  activeSessions: number;
+  enabledNas: number;
+  totalNas: number;
+  authSuccessRate24h: number | null;
+  authenticationTrend: Array<{ hour: string; accepts: number; rejects: number }>;
+  sessionsBySite: Array<{ site: string; sessions: number }>;
+  rejectReasons: Array<{ reason: string; count: number }>;
+  alerts: OperationalAlert[];
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: unknown;
+  ip: string | null;
+  createdAt: string;
+}
+
+export interface AuthenticationEvent {
+  id: string;
+  username: string;
+  type: string;
+  source: string;
+  metadata: unknown;
+  createdAt: string;
+}
+
+export interface MfaStatus {
+  enabled: boolean;
+  pendingEnrollment: boolean;
+}
+
+export interface MfaSetupResponse {
+  secret: string;
+  otpauthUri: string;
+}
