@@ -1,5 +1,6 @@
 FROM node:20-alpine AS build
 
+RUN apk add --no-cache openssl
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
@@ -13,6 +14,7 @@ RUN pnpm --filter @app/api exec prisma generate && pnpm --filter @app/api run bu
 FROM node:20-alpine AS runtime
 
 ENV NODE_ENV=production
+RUN apk add --no-cache openssl
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist

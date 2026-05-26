@@ -2,17 +2,27 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Clock3,
+  Copy,
+  KeyRound,
   Loader2,
   RefreshCw,
   Search,
   ShieldCheck,
   Smartphone,
+  Trash2,
   UserRound,
   XCircle,
 } from "lucide-react";
-import type { AdminDeviceSummary, DeviceApprovalEntry } from "@app/shared";
+import type {
+  AdminDeviceSummary,
+  DeviceApprovalEntry,
+  DeviceCertificateBundleResponse,
+} from "@app/shared";
 import {
+  clearAdminDeviceCertificate,
   decideAdminDevice,
+  generateAdminDeviceCertificate,
+  importAdminDeviceCertificate,
   listAdminDevices,
   listDeviceApprovals,
   listUserDevicesForAdmin,
@@ -22,6 +32,7 @@ import { useAuth } from "../auth/AuthContext";
 
 type DeviceTab = "pending" | "devices" | "history";
 type DeviceFilter = "all" | "pending" | "approved" | "rejected";
+type CertificateMode = "import" | "generate";
 
 function formatTimestamp(value: string | null): string {
   if (!value) return "Not recorded";
@@ -73,6 +84,10 @@ export function LiveDeviceApprovalsView() {
     username: string;
     fullName: string | null;
     devices: AdminDeviceSummary[];
+  } | null>(null);
+  const [certificateModal, setCertificateModal] = useState<{
+    device: AdminDeviceSummary;
+    mode: CertificateMode;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -144,6 +159,20 @@ export function LiveDeviceApprovalsView() {
     }
   };
 
+  const refreshSelectedUser = useCallback(
+    async (device: AdminDeviceSummary) => {
+      if (!token || selectedUser?.id !== device.userId) return;
+      const updated = await listUserDevicesForAdmin(token, device.userId, { pageSize: 100 });
+      setSelectedUser({
+        id: device.userId,
+        username: device.username,
+        fullName: device.fullName,
+        devices: updated.items,
+      });
+    },
+    [selectedUser?.id, token],
+  );
+
   const decide = async (device: AdminDeviceSummary, status: "approved" | "rejected") => {
     if (!token) return;
     setBusyId(device.id);
@@ -156,19 +185,36 @@ export function LiveDeviceApprovalsView() {
           : `${device.mac} marked ${status}. No active session needed reauthentication.`;
       setNotice({ ok: true, text: message });
       await load();
-      if (selectedUser?.id === device.userId) {
-        const updated = await listUserDevicesForAdmin(token, device.userId, { pageSize: 100 });
-        setSelectedUser({
-          id: device.userId,
-          username: device.username,
-          fullName: device.fullName,
-          devices: updated.items,
-        });
-      }
+      await refreshSelectedUser(device);
     } catch (err) {
       setNotice({
         ok: false,
         text: err instanceof ApiCallError ? err.payload.message : `Unable to ${status} device`,
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const clearCertificate = async (device: AdminDeviceSummary) => {
+    if (!token) return;
+    setBusyId(device.id);
+    setNotice(null);
+    try {
+      const result = await clearAdminDeviceCertificate(token, device.id);
+      setNotice({
+        ok: true,
+        text:
+          result.disconnectedSessions > 0
+            ? `Removed the client certificate from ${device.mac} and forced ${result.disconnectedSessions} session(s) to reauthenticate.`
+            : `Removed the client certificate from ${device.mac}.`,
+      });
+      await load();
+      await refreshSelectedUser(device);
+    } catch (err) {
+      setNotice({
+        ok: false,
+        text: err instanceof ApiCallError ? err.payload.message : "Unable to remove the client certificate",
       });
     } finally {
       setBusyId(null);
@@ -293,6 +339,9 @@ export function LiveDeviceApprovalsView() {
                           <div className="mt-1 text-xs text-zinc-500">
                             Learned {formatTimestamp(device.learnedAt)}
                           </div>
+                          <div className="mt-1 text-xs text-zinc-500">
+                            {device.certFingerprint ? `Client cert bound · ${device.certFingerprint.slice(0, 12)}...` : "Password / MAC path only"}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -314,6 +363,12 @@ export function LiveDeviceApprovalsView() {
                           className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
                         >
                           Inspect
+                        </button>
+                        <button
+                          onClick={() => setCertificateModal({ device, mode: "import" })}
+                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
+                        >
+                          Cert
                         </button>
                         {device.status !== "approved" && (
                           <button
@@ -392,7 +447,29 @@ export function LiveDeviceApprovalsView() {
           user={selectedUser}
           onClose={() => setSelectedUser(null)}
           onDecision={decide}
+          onManageCertificate={(device, mode) => setCertificateModal({ device, mode })}
+          onClearCertificate={clearCertificate}
           busyId={busyId}
+        />
+      )}
+
+      {certificateModal && token && (
+        <DeviceCertificateModal
+          token={token}
+          device={certificateModal.device}
+          mode={certificateModal.mode}
+          onClose={() => setCertificateModal(null)}
+          onSaved={async (result, actionLabel) => {
+            setNotice({
+              ok: true,
+              text:
+                result.disconnectedSessions > 0
+                  ? `${actionLabel} for ${certificateModal.device.mac}. Forced ${result.disconnectedSessions} active session(s) to reauthenticate.`
+                  : `${actionLabel} for ${certificateModal.device.mac}.`,
+            });
+            await load();
+            await refreshSelectedUser(certificateModal.device);
+          }}
         />
       )}
     </div>
@@ -403,6 +480,8 @@ function UserDevicesModal({
   user,
   onClose,
   onDecision,
+  onManageCertificate,
+  onClearCertificate,
   busyId,
 }: {
   user: {
@@ -413,6 +492,8 @@ function UserDevicesModal({
   };
   onClose: () => void;
   onDecision: (device: AdminDeviceSummary, status: "approved" | "rejected") => Promise<void>;
+  onManageCertificate: (device: AdminDeviceSummary, mode: CertificateMode) => void;
+  onClearCertificate: (device: AdminDeviceSummary) => Promise<void>;
   busyId: string | null;
 }) {
   return (
@@ -443,8 +524,32 @@ function UserDevicesModal({
                   <span className="mx-2 text-zinc-700">-</span>
                   Last seen {formatTimestamp(device.lastSeenAt)}
                 </div>
+                <div className="mt-1 text-xs text-zinc-500">
+                  {device.certFingerprint ? `Client cert bound · ${device.certFingerprint.slice(0, 16)}...` : "No client certificate bound"}
+                </div>
               </div>
               <div className="flex gap-2">
+                <button
+                  onClick={() => onManageCertificate(device, "import")}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
+                >
+                  Import cert
+                </button>
+                <button
+                  onClick={() => onManageCertificate(device, "generate")}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
+                >
+                  Issue cert
+                </button>
+                {device.certFingerprint && (
+                  <button
+                    onClick={() => void onClearCertificate(device)}
+                    disabled={busyId === device.id}
+                    className="rounded-lg border border-rose-900 px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-950/30 disabled:opacity-60"
+                  >
+                    Clear cert
+                  </button>
+                )}
                 {device.status !== "approved" && (
                   <button
                     onClick={() => void onDecision(device, "approved")}
@@ -468,6 +573,228 @@ function UserDevicesModal({
           ))}
           {user.devices.length === 0 && (
             <div className="px-5 py-8 text-center text-sm text-zinc-500">No devices recorded for this user yet.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BundleField({
+  label,
+  value,
+  rows = 5,
+}: {
+  label: string;
+  value: string;
+  rows?: number;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">{label}</div>
+        <button
+          onClick={() => void copy()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <textarea
+        readOnly
+        rows={rows}
+        value={value}
+        className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-200 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function DeviceCertificateModal({
+  token,
+  device,
+  mode,
+  onClose,
+  onSaved,
+}: {
+  token: string;
+  device: AdminDeviceSummary;
+  mode: CertificateMode;
+  onClose: () => void;
+  onSaved: (
+    result: DeviceCertificateBundleResponse | {
+      disconnectedSessions: number;
+    },
+    actionLabel: string,
+  ) => Promise<void>;
+}) {
+  const [pem, setPem] = useState("");
+  const [commonName, setCommonName] = useState(device.label || `${device.username}-${device.mac.replace(/:/g, "")}`);
+  const [sanEmail, setSanEmail] = useState(device.email);
+  const [pkcs12Password, setPkcs12Password] = useState("");
+  const [approve, setApprove] = useState(mode === "generate");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [bundle, setBundle] = useState<DeviceCertificateBundleResponse | null>(null);
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (mode === "import") {
+        const result = await importAdminDeviceCertificate(token, device.id, {
+          pem,
+          approve,
+        });
+        await onSaved(result, approve ? "Bound and approved the client certificate" : "Bound the client certificate");
+        onClose();
+        return;
+      }
+
+      const result = await generateAdminDeviceCertificate(token, device.id, {
+        commonName,
+        sanEmail: sanEmail || null,
+        pkcs12Password: pkcs12Password || null,
+        approve,
+      });
+      setBundle(result);
+      await onSaved(
+        result,
+        approve ? "Issued and approved the managed client certificate" : "Issued the managed client certificate",
+      );
+    } catch (err) {
+      setError(err instanceof ApiCallError ? err.payload.message : "Unable to process the client certificate");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-4xl rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+          <div>
+            <h3 className="text-base font-semibold text-zinc-100">
+              {mode === "import" ? "Bind client certificate" : "Issue managed client certificate"}
+            </h3>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              {device.label || "Unnamed device"} · <span className="font-mono">{device.mac}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          {error && (
+            <div className="rounded-lg border border-rose-900 bg-rose-950/20 px-4 py-3 text-sm text-rose-300">
+              {error}
+            </div>
+          )}
+
+          {mode === "import" ? (
+            <div className="space-y-3">
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Client certificate PEM
+                </label>
+                <textarea
+                  value={pem}
+                  onChange={(event) => setPem(event.target.value)}
+                  rows={10}
+                  placeholder="-----BEGIN CERTIFICATE-----"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-600 focus:outline-none"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Common name
+                </label>
+                <input
+                  value={commonName}
+                  onChange={(event) => setCommonName(event.target.value)}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-600 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  SAN email
+                </label>
+                <input
+                  value={sanEmail}
+                  onChange={(event) => setSanEmail(event.target.value)}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-600 focus:outline-none"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  PKCS#12 password
+                </label>
+                <input
+                  value={pkcs12Password}
+                  onChange={(event) => setPkcs12Password(event.target.value)}
+                  placeholder="Leave blank to auto-generate"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-600 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <label className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-200">
+            <input
+              type="checkbox"
+              checked={approve}
+              onChange={(event) => setApprove(event.target.checked)}
+              className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-indigo-500"
+            />
+            <span>Approve this device while applying the certificate</span>
+          </label>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => void submit()}
+              disabled={submitting || (mode === "import" && !pem.trim()) || (mode === "generate" && !commonName.trim())}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              {mode === "import" ? "Bind certificate" : "Issue certificate"}
+            </button>
+          </div>
+
+          {bundle && (
+            <div className="space-y-4 rounded-2xl border border-emerald-900/60 bg-emerald-950/10 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-emerald-300">Managed certificate bundle</h4>
+                <p className="mt-1 text-xs text-zinc-400">
+                  The PKCS#12 password is shown once here. Store it with the bundle before closing this dialog.
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100">
+                PKCS#12 password: <span className="font-mono">{bundle.pkcs12Password}</span>
+              </div>
+              <BundleField label="Certificate PEM" value={bundle.certificatePem} rows={8} />
+              <BundleField label="Private key PEM" value={bundle.privateKeyPem} rows={8} />
+              <BundleField label="PKCS#12 Base64" value={bundle.pkcs12Base64} rows={6} />
+            </div>
           )}
         </div>
       </div>

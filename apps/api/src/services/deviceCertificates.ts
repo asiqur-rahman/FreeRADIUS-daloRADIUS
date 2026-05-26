@@ -87,7 +87,7 @@ async function runOpenSsl(
     });
     child.on("error", (error) => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new ServiceUnavailable("OpenSSL CLI is not available for managed certificate issuance"));
+        reject(ServiceUnavailable("OpenSSL CLI is not available for managed certificate issuance"));
         return;
       }
       reject(error);
@@ -97,7 +97,7 @@ async function runOpenSsl(
         resolve();
         return;
       }
-      reject(new ServiceUnavailable(stderr.trim() || "OpenSSL failed to generate a client certificate"));
+      reject(ServiceUnavailable(stderr.trim() || "OpenSSL failed to generate a client certificate"));
     });
   });
 }

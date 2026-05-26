@@ -207,6 +207,54 @@ export interface DeviceDecisionRequest {
   notes?: string | null;
 }
 
+export interface DeviceCertificateSummary {
+  fingerprint: string;
+  subject: string;
+  issuer: string | null;
+  serial: string | null;
+  commonName: string | null;
+  sanEmail: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
+export interface DeviceCertificateImportRequest {
+  pem: string;
+  approve?: boolean;
+  notes?: string | null;
+}
+
+export interface GenerateDeviceCertificateRequest {
+  commonName?: string | null;
+  sanEmail?: string | null;
+  pkcs12Password?: string | null;
+  approve?: boolean;
+  notes?: string | null;
+}
+
+export interface DeviceCertificateMutationResponse {
+  ok: true;
+  device: AdminDeviceSummary;
+  certificate: DeviceCertificateSummary | null;
+  approvalChanged: boolean;
+  disconnectedSessions: number;
+}
+
+export interface DeviceCertificateImportResponse extends DeviceCertificateMutationResponse {
+  alreadyBound: boolean;
+}
+
+export interface DeviceCertificateBundleResponse extends DeviceCertificateImportResponse {
+  certificatePem: string;
+  privateKeyPem: string;
+  pkcs12Base64: string;
+  pkcs12Password: string;
+}
+
+export interface DeviceCertificateClearResponse extends DeviceCertificateMutationResponse {
+  alreadyCleared: boolean;
+}
+
 export interface DeviceApprovalEntry {
   id: string;
   deviceId: string;

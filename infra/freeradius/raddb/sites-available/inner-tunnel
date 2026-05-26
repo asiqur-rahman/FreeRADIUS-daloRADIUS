@@ -23,6 +23,7 @@ server inner-tunnel {
         chap
         mschap          # detects MS-CHAP attrs, sets Auth-Type := MS-CHAP
         suffix
+        update control { &Tmp-String-0 := "peap" }
 
         # Platform REST hook: returns NT-Password in control{} and
         # Tunnel-* VLAN attrs in reply{}.  On HTTP 4xx (unknown user or

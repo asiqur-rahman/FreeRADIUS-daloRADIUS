@@ -19,7 +19,7 @@ rest {
         uri    = "${...connect_uri}/api/v1/radius/authorize"
         method = 'post'
         body   = 'json'
-        data   = '{"username":"%{User-Name}","mac":"%{outer.request:Calling-Station-Id}","nasIp":"%{NAS-IP-Address}","nasIdentifier":"%{NAS-Identifier}","calledStationId":"%{Called-Station-Id}"}'
+        data   = '{"authMethod":"%{control:Tmp-String-0}","username":"%{User-Name}","mac":"%{outer.request:Calling-Station-Id}","nasIp":"%{NAS-IP-Address}","nasIdentifier":"%{NAS-Identifier}","calledStationId":"%{Called-Station-Id}","certSubject":"%{session-state:TLS-Client-Cert-Subject}","certIssuer":"%{session-state:TLS-Client-Cert-Issuer}","certSerial":"%{session-state:TLS-Client-Cert-Serial}","certCommonName":"%{session-state:TLS-Client-Cert-Common-Name}","certEmail":"%{session-state:TLS-Client-Cert-Subject-Alt-Name-Email}"}'
 
         header {
             name  = "X-Radius-Hook-Secret"

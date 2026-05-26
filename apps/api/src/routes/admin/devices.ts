@@ -3,13 +3,24 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import type {
   AdminDeviceSummary,
+  DeviceCertificateBundleResponse,
+  DeviceCertificateClearResponse,
+  DeviceCertificateImportRequest,
+  DeviceCertificateImportResponse,
+  DeviceCertificateSummary,
   DeviceApprovalEntry,
   DeviceDecisionRequest,
+  GenerateDeviceCertificateRequest,
   Paginated,
 } from "@app/shared";
 import { prisma } from "../../db.js";
 import { NotFound } from "../../lib/errors.js";
 import { decideDevice } from "../../services/deviceApprovals.js";
+import {
+  bindImportedDeviceCertificate,
+  clearDeviceCertificate,
+  generateManagedDeviceCertificate,
+} from "../../services/deviceCertificates.js";
 
 const deviceInclude = {
   user: {
@@ -78,6 +89,29 @@ const ListApprovalsQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+const ImportDeviceCertificateBody = z.object({
+  pem: z.string().min(64, "Expected a PEM-encoded X.509 certificate"),
+  approve: z.boolean().default(false),
+  notes: z.string().trim().max(500).nullish(),
+});
+
+const GenerateDeviceCertificateBody = z.object({
+  commonName: z.string().trim().max(64).nullish(),
+  sanEmail: z
+    .string()
+    .trim()
+    .max(254)
+    .email("Expected a valid email address")
+    .nullish(),
+  pkcs12Password: z.string().trim().min(8).max(128).nullish(),
+  approve: z.boolean().default(true),
+  notes: z.string().trim().max(500).nullish(),
+});
+
+const ClearDeviceCertificateBody = z.object({
+  notes: z.string().trim().max(500).nullish(),
+});
+
 function toAdminDevice(device: DeviceWithRelations): AdminDeviceSummary {
   const latestApproval = device.approvals[0];
   return {
@@ -117,6 +151,15 @@ function toApprovalEntry(entry: ApprovalWithRelations): DeviceApprovalEntry {
     decidedBy: entry.admin?.username ?? null,
     notes: entry.notes ?? null,
   };
+}
+
+async function loadAdminDevice(id: string): Promise<AdminDeviceSummary> {
+  const device = await prisma.userDevice.findUnique({
+    where: { id },
+    include: deviceInclude,
+  });
+  if (!device) throw NotFound("Device not found");
+  return toAdminDevice(device);
 }
 
 function deviceWhere(query: z.infer<typeof ListDevicesQuery>, userId = query.userId): Prisma.UserDeviceWhereInput {
@@ -251,6 +294,85 @@ const adminDevices: FastifyPluginAsync = async (app) => {
     };
     return body;
   });
+
+  app.post<{ Params: { id: string }; Body: DeviceCertificateImportRequest }>(
+    "/devices/:id/certificate/import",
+    async (req): Promise<DeviceCertificateImportResponse> => {
+      const body = ImportDeviceCertificateBody.parse(req.body);
+      const result = await bindImportedDeviceCertificate({
+        deviceId: req.params.id,
+        pem: body.pem,
+        approve: body.approve,
+        notes: body.notes ?? null,
+        actorId: req.currentUser!.sub,
+        actorLabel: req.currentUser!.username,
+        req,
+      });
+
+      return {
+        ok: true,
+        alreadyBound: result.alreadyBound,
+        approvalChanged: result.approvalChanged,
+        disconnectedSessions: result.disconnectedSessions,
+        device: await loadAdminDevice(result.deviceId),
+        certificate: result.certificate as DeviceCertificateSummary,
+      };
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: GenerateDeviceCertificateRequest }>(
+    "/devices/:id/certificate/generate",
+    async (req): Promise<DeviceCertificateBundleResponse> => {
+      const body = GenerateDeviceCertificateBody.parse(req.body);
+      const result = await generateManagedDeviceCertificate({
+        deviceId: req.params.id,
+        commonName: body.commonName ?? null,
+        sanEmail: body.sanEmail ?? null,
+        pkcs12Password: body.pkcs12Password ?? null,
+        approve: body.approve,
+        notes: body.notes ?? null,
+        actorId: req.currentUser!.sub,
+        actorLabel: req.currentUser!.username,
+        req,
+      });
+
+      return {
+        ok: true,
+        alreadyBound: result.alreadyBound,
+        approvalChanged: result.approvalChanged,
+        disconnectedSessions: result.disconnectedSessions,
+        device: await loadAdminDevice(result.deviceId),
+        certificate: result.certificate as DeviceCertificateSummary,
+        certificatePem: result.certificatePem,
+        privateKeyPem: result.privateKeyPem,
+        pkcs12Base64: result.pkcs12Base64,
+        pkcs12Password: result.pkcs12Password,
+      };
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/devices/:id/certificate",
+    async (req): Promise<DeviceCertificateClearResponse> => {
+      const body = ClearDeviceCertificateBody.parse(req.body ?? {});
+      const result = await clearDeviceCertificate({
+        deviceId: req.params.id,
+        actorId: req.currentUser!.sub,
+        actorLabel: req.currentUser!.username,
+        notes: body.notes ?? null,
+        req,
+      });
+
+      return {
+        ok: true,
+        alreadyCleared: result.alreadyCleared,
+        approvalChanged: result.approvalChanged,
+        disconnectedSessions: result.disconnectedSessions,
+        device: await loadAdminDevice(result.deviceId),
+        certificate: null,
+      };
+    },
+  );
 };
 
 export default adminDevices;

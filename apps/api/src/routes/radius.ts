@@ -13,8 +13,7 @@
 //   Learns new MAC devices and triggers the approval workflow.
 // ---------------------------------------------------------------------------
 
-import type { Prisma } from "@prisma/client";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
 import {
@@ -157,8 +156,8 @@ async function createPendingApproval(deviceId: string, request: {
 }
 
 async function authorizePeap(
-  req: Parameters<FastifyPluginAsync>[0],
-  reply: Parameters<FastifyPluginAsync>[1],
+  req: FastifyRequest<{ Body: AuthorizeBody }>,
+  reply: FastifyReply,
   body: AuthorizeBody,
 ) {
   const c = config();
@@ -224,8 +223,8 @@ async function authorizePeap(
 }
 
 async function authorizeEapTls(
-  req: Parameters<FastifyPluginAsync>[0],
-  reply: Parameters<FastifyPluginAsync>[1],
+  req: FastifyRequest<{ Body: AuthorizeBody }>,
+  reply: FastifyReply,
   body: AuthorizeBody,
 ) {
   const c = config();

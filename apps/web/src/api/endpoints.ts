@@ -10,6 +10,10 @@ import type {
   CreateDeviceRequest,
   AuthenticationEvent,
   AuditLogEntry,
+  DeviceCertificateBundleResponse,
+  DeviceCertificateClearResponse,
+  DeviceCertificateImportRequest,
+  DeviceCertificateImportResponse,
   DeviceApprovalEntry,
   DeviceDecisionRequest,
   SessionDisconnectResponse,
@@ -25,6 +29,7 @@ import type {
   UpdateDeviceRequest,
   UserDevice,
   UserSummary,
+  GenerateDeviceCertificateRequest,
   UpdateUserRequest,
 } from "@app/shared";
 import { api } from "./client";
@@ -135,6 +140,31 @@ export function listDeviceApprovals(
   if (q?.pageSize) params.set("pageSize", String(q.pageSize));
   const qs = params.toString();
   return api<Paginated<DeviceApprovalEntry>>(`${v1}/admin/approvals${qs ? `?${qs}` : ""}`, { token });
+}
+export function importAdminDeviceCertificate(token: string, id: string, body: DeviceCertificateImportRequest) {
+  return api<DeviceCertificateImportResponse>(`${v1}/admin/devices/${id}/certificate/import`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
+export function generateAdminDeviceCertificate(
+  token: string,
+  id: string,
+  body: GenerateDeviceCertificateRequest,
+) {
+  return api<DeviceCertificateBundleResponse>(`${v1}/admin/devices/${id}/certificate/generate`, {
+    method: "POST",
+    token,
+    body,
+  });
+}
+export function clearAdminDeviceCertificate(token: string, id: string, notes?: string | null) {
+  return api<DeviceCertificateClearResponse>(`${v1}/admin/devices/${id}/certificate`, {
+    method: "DELETE",
+    token,
+    body: notes ? { notes } : {},
+  });
 }
 
 // -- Self-service devices ----------------------------------------------------

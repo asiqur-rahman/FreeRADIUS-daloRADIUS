@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# Final policy gate for EAP-TLS.
+#
+# FreeRADIUS calls this once, after the client certificate chain has
+# already validated and just before Access-Accept would be sent.
+# That makes it the right place to ask the platform whether the cert is
+# bound to a managed device and which VLAN / reply attributes apply.
+# ---------------------------------------------------------------------------
+server check-eap-tls {
+
+    recv Access-Request {
+        update control {
+            &Tmp-String-0 := "eap-tls"
+        }
+
+        rest
+        if (rest != ok && rest != updated) {
+            &control.Auth-Type := Reject
+        }
+        else {
+            &control.Auth-Type := Accept
+        }
+    }
+}
