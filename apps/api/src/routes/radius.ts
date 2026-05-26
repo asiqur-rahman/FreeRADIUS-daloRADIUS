@@ -143,15 +143,12 @@ async function createPendingApproval(deviceId: string, request: {
     data: { deviceId, status: "pending" },
   });
 
-  sendApprovalRequest({
+  await sendApprovalRequest({
     deviceId,
     username: request.username,
     fullName: request.fullName,
     mac: request.mac,
     nasIp: request.nasIp,
-  }).catch(() => {
-    // Logging stays at the route level so the helper can be reused in
-    // both PEAP post-auth and EAP-TLS certificate checks.
   });
 }
 
