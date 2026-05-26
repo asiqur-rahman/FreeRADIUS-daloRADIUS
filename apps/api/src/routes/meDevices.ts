@@ -35,6 +35,7 @@ function toDevice(device: DeviceRecord, observedAt?: Date | null): UserDevice {
     learnedAt: device.learnedAt.toISOString(),
     verifiedAt: device.verifiedAt?.toISOString() ?? null,
     lastSeenAt: (observedAt ?? device.lastSeenAt)?.toISOString() ?? null,
+    status: device.status,
   };
 }
 

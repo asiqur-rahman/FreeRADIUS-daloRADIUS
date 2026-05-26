@@ -11,7 +11,7 @@
 
 import pino from "pino";
 import { config } from "../config.js";
-import { prisma } from "../db.js";
+import { decideDevice } from "../services/deviceApprovals.js";
 
 const log = pino({ name: "telegram" });
 
@@ -142,29 +142,29 @@ async function handleCallback(
   if (!deviceId || (action !== "approve" && action !== "reject")) return;
 
   const newStatus = action === "approve" ? ("approved" as const) : ("rejected" as const);
-  const emoji     = action === "approve" ? "✅" : "❌";
+  const emoji = action === "approve" ? "✅" : "❌";
 
-  // Update the device record and create an audit trail.
-  const device = await prisma.userDevice.update({
-    where:   { id: deviceId },
-    data:    { status: newStatus },
-    include: { user: { select: { username: true, fullName: true } } },
+  const decision = await decideDevice({
+    deviceId,
+    status: newStatus,
+    actorLabel: cb.from.first_name,
+    source: "telegram",
+    notes: `${newStatus} via Telegram by ${cb.from.first_name}`,
   });
 
-  await prisma.deviceApproval.updateMany({
-    where: { deviceId, status: "pending" },
-    data:  {
-      status:    newStatus,
-      decidedAt: new Date(),
-      notes:     `${newStatus} via Telegram by ${cb.from.first_name}`,
-    },
-  });
+  const displayName = decision.device.user.fullName
+    ? `${decision.device.user.username} (${decision.device.user.fullName})`
+    : decision.device.user.username;
 
-  const displayName = device.user.fullName
-    ? `${device.user.username} (${device.user.fullName})`
-    : device.user.username;
-
-  const replyText = `${emoji} *${newStatus.toUpperCase()}*\n\`${device.mac}\` — ${displayName}`;
+  const replyText = [
+    `${emoji} *${newStatus.toUpperCase()}*`,
+    `\`${decision.device.mac}\` - ${displayName}`,
+    decision.disconnectAttempts.length > 0
+      ? `_Forced reauthentication for ${decision.disconnectAttempts.length} active session(s)._`
+      : decision.alreadyApplied
+        ? "_This decision was already applied._"
+        : "_No active session needed reauthentication._",
+  ].join("\n");
 
   // Edit the original message (replaces the buttons with the decision).
   if (cb.message) {
@@ -182,7 +182,14 @@ async function handleCallback(
   }
 
   log.info(
-    { deviceId, mac: device.mac, username: device.user.username, newStatus },
+    {
+      deviceId,
+      mac: decision.device.mac,
+      username: decision.device.user.username,
+      newStatus,
+      reauthAttempts: decision.disconnectAttempts.length,
+      alreadyApplied: decision.alreadyApplied,
+    },
     "telegram.device_decision",
   );
 }

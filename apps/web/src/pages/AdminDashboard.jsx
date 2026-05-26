@@ -15,6 +15,7 @@ import { LiveAuditView } from '../views/LiveAuditView';
 import { LiveUsersView } from '../views/LiveUsersView';
 import { LiveGroupsView } from '../views/LiveGroupsView';
 import { LiveSettingsView } from '../views/LiveSettingsView';
+import { LiveDeviceApprovalsView } from '../views/LiveDeviceApprovalsView';
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
@@ -88,6 +89,7 @@ const audit = [
 const navItems = [
   { id: 'overview', icon: Home, label: 'Overview' },
   { id: 'users', icon: UsersRound, label: 'Users' },
+  { id: 'devices', icon: Smartphone, label: 'Device Approvals' },
   { id: 'sessions', icon: Activity, label: 'Live Sessions' },
   { id: 'groups', icon: Layers, label: 'Groups & Policy' },
   { id: 'nas', icon: Cpu, label: 'NAS Devices' },
@@ -674,6 +676,7 @@ export default function AdminDashboard() {
   const titles = {
     overview: 'Overview',
     users: 'Users',
+    devices: 'Device Approvals',
     sessions: 'Live Sessions',
     groups: 'Groups & Policy',
     nas: 'NAS Devices',
@@ -755,6 +758,7 @@ export default function AdminDashboard() {
           <div className="p-6">
             {view === 'overview' && <Overview/>}
             {view === 'users' && <UsersView/>}
+            {view === 'devices' && <LiveDeviceApprovalsView/>}
             {view === 'sessions' && <SessionsView/>}
             {view === 'groups' && <GroupsView/>}
             {view === 'nas' && <NasView/>}

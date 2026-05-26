@@ -9,6 +9,12 @@ function lastSeenLabel(value: string | null): string {
   return `Last seen ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))}`;
 }
 
+function statusStyle(status: UserDevice["status"]) {
+  if (status === "approved") return "bg-emerald-100 text-emerald-800";
+  if (status === "rejected") return "bg-rose-100 text-rose-800";
+  return "bg-amber-100 text-amber-800";
+}
+
 export function SelfServiceDevices() {
   const { token } = useAuth();
   const [devices, setDevices] = useState<UserDevice[]>([]);
@@ -202,12 +208,19 @@ export function SelfServiceDevices() {
                     <h3 className="font-semibold text-stone-900">{device.label || "Unnamed device"}</h3>
                     {device.isPrimary && <span className="text-[10px] font-semibold uppercase bg-stone-900 text-white px-1.5 py-0.5 rounded">Primary</span>}
                     {device.verifiedAt && <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />}
+                    <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${statusStyle(device.status)}`}>{device.status}</span>
                   </div>
                 )}
                 <div className="flex items-center gap-4 text-xs text-stone-500">
                   <span className="font-mono uppercase">{device.mac}</span>
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{lastSeenLabel(device.lastSeenAt)}</span>
                 </div>
+                {device.status === "pending" && (
+                  <div className="mt-2 text-xs text-amber-700">Awaiting administrator approval before this device receives normal network access.</div>
+                )}
+                {device.status === "rejected" && (
+                  <div className="mt-2 text-xs text-rose-700">This device has been rejected by an administrator and will remain blocked until reviewed.</div>
+                )}
               </div>
               <div className="flex gap-1">
                 {!device.isPrimary && (

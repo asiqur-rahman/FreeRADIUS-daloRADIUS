@@ -9,6 +9,8 @@ export type UserRole = "admin" | "user";
 
 export type UserStatus = "pending" | "active" | "suspended" | "expired";
 
+export type DeviceStatus = "pending" | "approved" | "rejected";
+
 export interface UserSummary {
   id: string;
   username: string;
@@ -74,6 +76,19 @@ export interface UpdateUserRequest {
 
 export interface GroupAttribute {
   id: string;
+  attribute: string;
+  op: string;
+  value: string;
+  kind: "check" | "reply";
+}
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
+export interface CreateGroupAttributeRequest {
   attribute: string;
   op: string;
   value: string;
@@ -162,6 +177,7 @@ export interface UserDevice {
   learnedAt: string;
   verifiedAt: string | null;
   lastSeenAt: string | null;
+  status: DeviceStatus;
 }
 
 export interface CreateDeviceRequest {
@@ -173,6 +189,38 @@ export interface CreateDeviceRequest {
 export interface UpdateDeviceRequest {
   label?: string | null;
   isPrimary?: boolean;
+}
+
+export interface AdminDeviceSummary extends UserDevice {
+  userId: string;
+  username: string;
+  fullName: string | null;
+  email: string;
+  requestedAt: string | null;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decisionNotes: string | null;
+}
+
+export interface DeviceDecisionRequest {
+  status: Exclude<DeviceStatus, "pending">;
+  notes?: string | null;
+}
+
+export interface DeviceApprovalEntry {
+  id: string;
+  deviceId: string;
+  userId: string;
+  username: string;
+  fullName: string | null;
+  email: string;
+  mac: string;
+  deviceLabel: string | null;
+  status: DeviceStatus;
+  requestedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  notes: string | null;
 }
 
 export interface RadiusSession {

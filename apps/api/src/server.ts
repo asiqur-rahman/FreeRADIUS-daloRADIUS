@@ -22,6 +22,7 @@ import meRoutes from "./routes/me.js";
 import meDeviceRoutes from "./routes/meDevices.js";
 import adminSessionRoutes from "./routes/admin/sessions.js";
 import adminOperationRoutes from "./routes/admin/operations.js";
+import adminDeviceRoutes from "./routes/admin/devices.js";
 import mfaRoutes from "./routes/mfa.js";
 import radiusRoutes from "./routes/radius.js";
 import { Forbidden } from "./lib/errors.js";
@@ -78,6 +79,7 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
       await api.register(adminCertRoutes, { prefix: "/admin" });
       await api.register(adminSessionRoutes, { prefix: "/admin" });
       await api.register(adminOperationRoutes, { prefix: "/admin" });
+      await api.register(adminDeviceRoutes, { prefix: "/admin" });
       // FreeRADIUS rlm_rest hook — internal, protected by shared secret.
       await api.register(radiusRoutes, { prefix: "/radius" });
     },

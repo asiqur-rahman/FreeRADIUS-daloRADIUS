@@ -2,11 +2,16 @@
 // Each call accepts the auth token explicitly so the data layer
 // stays decoupled from React context.
 import type {
+  AdminDeviceSummary,
+  CreateGroupAttributeRequest,
+  CreateGroupRequest,
   CreateNasRequest,
   CreateUserRequest,
   CreateDeviceRequest,
   AuthenticationEvent,
   AuditLogEntry,
+  DeviceApprovalEntry,
+  DeviceDecisionRequest,
   SessionDisconnectResponse,
   EapCertificate,
   GroupSummary,
@@ -46,8 +51,14 @@ export function updateUser(token: string, id: string, body: UpdateUserRequest) {
 export function listGroups(token: string) {
   return api<GroupSummary[]>(`${v1}/admin/groups`, { token });
 }
-export function createGroup(token: string, body: { name: string; description?: string; isDefault?: boolean }) {
+export function createGroup(token: string, body: CreateGroupRequest) {
   return api<GroupSummary>(`${v1}/admin/groups`, { method: "POST", token, body });
+}
+export function createGroupAttribute(token: string, id: string, body: CreateGroupAttributeRequest) {
+  return api<GroupSummary["attributes"][number]>(`${v1}/admin/groups/${id}/attributes`, { method: "POST", token, body });
+}
+export function deleteGroupAttribute(token: string, id: string, attrId: string) {
+  return api<{ ok: true }>(`${v1}/admin/groups/${id}/attributes/${attrId}`, { method: "DELETE", token });
 }
 
 // ── NAS ──────────────────────────────────────────────────────────────
@@ -78,6 +89,52 @@ export function listSites(token: string) {
 // ── EAP certs ────────────────────────────────────────────────────────
 export function listCerts(token: string) {
   return api<EapCertificate[]>(`${v1}/admin/certs`, { token });
+}
+
+// -- Device approvals -------------------------------------------------------
+export function listAdminDevices(
+  token: string,
+  q?: { status?: "pending" | "approved" | "rejected"; userId?: string; search?: string; page?: number; pageSize?: number },
+) {
+  const params = new URLSearchParams();
+  if (q?.status) params.set("status", q.status);
+  if (q?.userId) params.set("userId", q.userId);
+  if (q?.search) params.set("search", q.search);
+  if (q?.page) params.set("page", String(q.page));
+  if (q?.pageSize) params.set("pageSize", String(q.pageSize));
+  const qs = params.toString();
+  return api<Paginated<AdminDeviceSummary>>(`${v1}/admin/devices${qs ? `?${qs}` : ""}`, { token });
+}
+export function listUserDevicesForAdmin(token: string, userId: string, q?: { status?: "pending" | "approved" | "rejected"; search?: string; page?: number; pageSize?: number }) {
+  const params = new URLSearchParams();
+  if (q?.status) params.set("status", q.status);
+  if (q?.search) params.set("search", q.search);
+  if (q?.page) params.set("page", String(q.page));
+  if (q?.pageSize) params.set("pageSize", String(q.pageSize));
+  const qs = params.toString();
+  return api<Paginated<AdminDeviceSummary>>(`${v1}/admin/users/${userId}/devices${qs ? `?${qs}` : ""}`, { token });
+}
+export function decideAdminDevice(token: string, id: string, body: DeviceDecisionRequest) {
+  return api<{
+    ok: true;
+    alreadyApplied: boolean;
+    disconnectedSessions: number;
+    disconnectAttempts: Array<{ sessionId: string; result: SessionDisconnectResponse["result"] }>;
+    device: AdminDeviceSummary;
+  }>(`${v1}/admin/devices/${id}`, { method: "PATCH", token, body });
+}
+export function listDeviceApprovals(
+  token: string,
+  q?: { status?: "pending" | "approved" | "rejected"; userId?: string; search?: string; page?: number; pageSize?: number },
+) {
+  const params = new URLSearchParams();
+  if (q?.status) params.set("status", q.status);
+  if (q?.userId) params.set("userId", q.userId);
+  if (q?.search) params.set("search", q.search);
+  if (q?.page) params.set("page", String(q.page));
+  if (q?.pageSize) params.set("pageSize", String(q.pageSize));
+  const qs = params.toString();
+  return api<Paginated<DeviceApprovalEntry>>(`${v1}/admin/approvals${qs ? `?${qs}` : ""}`, { token });
 }
 
 // -- Self-service devices ----------------------------------------------------

@@ -1,198 +1,431 @@
-// ─────────────────────────────────────────────────────────────────────
-//  FreeRADIUS rlm_rest hook endpoints.
+// ---------------------------------------------------------------------------
+// FreeRADIUS rlm_rest hook endpoints.
 //
-//  These routes are called by FreeRADIUS (not by users or the web UI).
-//  They are protected by a shared secret in X-Radius-Hook-Secret.
+// These routes are called by FreeRADIUS, not by browser users.
+// They are protected by X-Radius-Hook-Secret.
 //
-//  POST /api/v1/radius/authorize
-//    Called from inner-tunnel authorize.
-//    Returns NT-Password + VLAN assignment.
+// POST /api/v1/radius/authorize
+//   PEAP inner-tunnel: returns NT-Password + reply policy.
+//   EAP-TLS check-eap-tls: returns reply policy for a bound client cert.
 //
-//  POST /api/v1/radius/post-auth
-//    Called after successful MSCHAPv2 authentication.
-//    Registers new devices, fires Telegram notification.
-// ─────────────────────────────────────────────────────────────────────
+// POST /api/v1/radius/post-auth
+//   Called after successful PEAP/MSCHAPv2 auth.
+//   Learns new MAC devices and triggers the approval workflow.
+// ---------------------------------------------------------------------------
 
+import type { Prisma } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
-import { prisma } from "../db.js";
 import { config } from "../config.js";
+import { prisma } from "../db.js";
+import {
+  summarizePresentedCertificate,
+  type ClientCertificateSummary,
+} from "../lib/clientCertificates.js";
+import { normalizeMac } from "../lib/mac.js";
 import { sendApprovalRequest } from "../lib/telegram.js";
 
-// ── RADIUS attribute value helpers ────────────────────────────────
-// FreeRADIUS rlm_rest expects reply/control attributes in this shape.
-
 interface RlmAttr {
-  name:  string;
+  name: string;
   value: string;
-  op?:   string; // default ":=" for control, "=" for reply
+  op?: string;
 }
 
 interface RlmRestResponse {
   control?: RlmAttr[];
-  reply?:   RlmAttr[];
+  reply?: RlmAttr[];
+}
+
+interface UserGroupReplyShape {
+  priority: number;
+  group: {
+    attributes: Array<{
+      attribute: string;
+      op: string;
+      value: string;
+      kind: string;
+    }>;
+  };
+}
+
+interface AuthorizeBody {
+  authMethod?: "peap" | "eap-tls";
+  username?: string;
+  mac: string;
+  nasIp: string;
+  nasIdentifier?: string;
+  calledStationId?: string;
+  certSubject?: string;
+  certIssuer?: string;
+  certSerial?: string;
+  certCommonName?: string;
+  certEmail?: string;
 }
 
 function vlanReply(vlanId: number): RlmAttr[] {
   return [
-    { name: "Tunnel-Type",             value: "13" }, // VLAN
-    { name: "Tunnel-Medium-Type",      value: "6"  }, // IEEE-802
+    { name: "Tunnel-Type", value: "13" },
+    { name: "Tunnel-Medium-Type", value: "6" },
     { name: "Tunnel-Private-Group-ID", value: String(vlanId) },
   ];
 }
 
-// ── Route plugin ──────────────────────────────────────────────────
+function attributeKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function normalizeReplyAttr(attr: RlmAttr): RlmAttr {
+  const key = attributeKey(attr.name);
+  if (key === "tunnel-type") {
+    return {
+      ...attr,
+      name: "Tunnel-Type",
+      value: /^vlan$/i.test(attr.value) ? "13" : attr.value,
+    };
+  }
+  if (key === "tunnel-medium-type") {
+    return {
+      ...attr,
+      name: "Tunnel-Medium-Type",
+      value: /^ieee-802$/i.test(attr.value) ? "6" : attr.value,
+    };
+  }
+  if (key === "tunnel-private-group-id") {
+    return { ...attr, name: "Tunnel-Private-Group-ID" };
+  }
+  return attr;
+}
+
+function replyFromGroups(groups: UserGroupReplyShape[], fallbackVlanId: number): RlmAttr[] {
+  const merged = new Map<string, RlmAttr>();
+
+  for (const membership of [...groups].sort((a, b) => a.priority - b.priority)) {
+    for (const attr of membership.group.attributes) {
+      if (attr.kind !== "reply") continue;
+      const normalized = normalizeReplyAttr({
+        name: attr.attribute,
+        value: attr.value,
+        op: attr.op,
+      });
+      const key = attributeKey(normalized.name);
+      if (!merged.has(key)) merged.set(key, normalized);
+    }
+  }
+
+  const attrs = [...merged.values()];
+  const hasVlanId = attrs.some((attr) => attributeKey(attr.name) === "tunnel-private-group-id");
+  const hasTunnelType = attrs.some((attr) => attributeKey(attr.name) === "tunnel-type");
+  const hasTunnelMedium = attrs.some((attr) => attributeKey(attr.name) === "tunnel-medium-type");
+
+  if (!hasVlanId) return [...attrs, ...vlanReply(fallbackVlanId)];
+
+  const ensured = [...attrs];
+  if (!hasTunnelType) ensured.unshift({ name: "Tunnel-Type", value: "13", op: ":=" });
+  if (!hasTunnelMedium) ensured.unshift({ name: "Tunnel-Medium-Type", value: "6", op: ":=" });
+  return ensured;
+}
+
+function replyForDevice(
+  groups: UserGroupReplyShape[],
+  status: "pending" | "approved" | "rejected" | "new",
+  c: ReturnType<typeof config>,
+): RlmAttr[] {
+  return status === "approved"
+    ? replyFromGroups(groups, c.NORMAL_VLAN_ID)
+    : vlanReply(c.QUARANTINE_VLAN_ID);
+}
+
+async function createPendingApproval(deviceId: string, request: {
+  username: string;
+  fullName: string | null;
+  mac: string;
+  nasIp: string;
+}) {
+  await prisma.deviceApproval.create({
+    data: { deviceId, status: "pending" },
+  });
+
+  sendApprovalRequest({
+    deviceId,
+    username: request.username,
+    fullName: request.fullName,
+    mac: request.mac,
+    nasIp: request.nasIp,
+  }).catch(() => {
+    // Logging stays at the route level so the helper can be reused in
+    // both PEAP post-auth and EAP-TLS certificate checks.
+  });
+}
+
+async function authorizePeap(
+  req: Parameters<FastifyPluginAsync>[0],
+  reply: Parameters<FastifyPluginAsync>[1],
+  body: AuthorizeBody,
+) {
+  const c = config();
+  const username = body.username?.toLowerCase();
+  if (!username) {
+    return reply.status(400).send({ error: "Username is required for PEAP" });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { username },
+    include: {
+      secret: true,
+      groups: {
+        include: {
+          group: {
+            include: { attributes: true },
+          },
+        },
+        orderBy: { priority: "asc" },
+      },
+    },
+  });
+
+  if (!user || user.status !== "active" || !user.secret) {
+    req.log.info({ username }, "radius.authorize user not found or inactive");
+    return reply.status(404).send({ error: "User not found" });
+  }
+
+  const ntHash = user.secret.ntHash;
+  if (!ntHash || ntHash.length !== 32) {
+    req.log.warn({ username }, "radius.authorize missing ntHash");
+    return reply.status(500).send({ error: "No NT-Password configured" });
+  }
+
+  const normalizedMac = normalizeMac(body.mac);
+  const device = await prisma.userDevice.findFirst({
+    where: { userId: user.id, mac: normalizedMac },
+    select: { status: true },
+  });
+
+  if (device?.status === "rejected") {
+    req.log.info({ username, mac: normalizedMac }, "radius.authorize device rejected");
+    return reply.status(403).send({ error: "Device rejected" });
+  }
+
+  const status = device?.status ?? "new";
+  const replyAttrs = replyForDevice(user.groups, status, c);
+  const vlanId =
+    replyAttrs.find((attr) => attributeKey(attr.name) === "tunnel-private-group-id")?.value ??
+    String(status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
+
+  req.log.info({ username, mac: normalizedMac, deviceStatus: status, vlanId }, "radius.authorize peap");
+
+  const response: RlmRestResponse = {
+    control: [
+      { name: "NT-Password", value: `0x${ntHash}`, op: ":=" },
+      { name: "Auth-Type", value: "MS-CHAP", op: ":=" },
+    ],
+    reply: replyAttrs,
+  };
+
+  return reply.status(200).send(response);
+}
+
+async function authorizeEapTls(
+  req: Parameters<FastifyPluginAsync>[0],
+  reply: Parameters<FastifyPluginAsync>[1],
+  body: AuthorizeBody,
+) {
+  const c = config();
+  const normalizedMac = normalizeMac(body.mac);
+  let certificate: ClientCertificateSummary;
+
+  try {
+    certificate = summarizePresentedCertificate({
+      subject: body.certSubject ?? null,
+      issuer: body.certIssuer ?? null,
+      serial: body.certSerial ?? null,
+      commonName: body.certCommonName ?? null,
+      sanEmail: body.certEmail ?? null,
+    });
+  } catch (error) {
+    req.log.warn(
+      {
+        mac: normalizedMac,
+        certSubject: body.certSubject,
+        certIssuer: body.certIssuer,
+        certSerial: body.certSerial,
+      },
+      "radius.authorize eap-tls missing certificate identity",
+    );
+    throw error;
+  }
+
+  const device = await prisma.userDevice.findFirst({
+    where: { certFingerprint: certificate.fingerprint },
+    include: {
+      user: {
+        include: {
+          groups: {
+            include: {
+              group: {
+                include: { attributes: true },
+              },
+            },
+            orderBy: { priority: "asc" },
+          },
+        },
+      },
+      approvals: {
+        where: { status: "pending" },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+
+  if (!device || device.user.status !== "active") {
+    req.log.info(
+      {
+        mac: normalizedMac,
+        fingerprint: certificate.fingerprint,
+        commonName: certificate.commonName,
+      },
+      "radius.authorize eap-tls certificate not registered",
+    );
+    return reply.status(403).send({ error: "Certificate not registered" });
+  }
+
+  if (device.mac !== normalizedMac) {
+    req.log.info(
+      {
+        username: device.user.username,
+        expectedMac: device.mac,
+        presentedMac: normalizedMac,
+        fingerprint: certificate.fingerprint,
+      },
+      "radius.authorize eap-tls mac mismatch",
+    );
+    return reply.status(403).send({ error: "Certificate presented from an unexpected device" });
+  }
+
+  if (device.status === "rejected") {
+    req.log.info(
+      {
+        username: device.user.username,
+        mac: normalizedMac,
+        fingerprint: certificate.fingerprint,
+      },
+      "radius.authorize eap-tls device rejected",
+    );
+    return reply.status(403).send({ error: "Device rejected" });
+  }
+
+  await prisma.userDevice.update({
+    where: { id: device.id },
+    data: { lastSeenAt: new Date() },
+  });
+
+  if (device.status === "pending" && device.approvals.length === 0) {
+    req.log.info(
+      {
+        username: device.user.username,
+        mac: normalizedMac,
+        deviceId: device.id,
+      },
+      "radius.eap_tls.pending_device",
+    );
+    createPendingApproval(device.id, {
+      username: device.user.username,
+      fullName: device.user.fullName,
+      mac: normalizedMac,
+      nasIp: body.nasIp,
+    }).catch((err) => {
+      req.log.error({ err, deviceId: device.id }, "radius.eap_tls.pending_notify failed");
+    });
+  }
+
+  const replyAttrs = replyForDevice(device.user.groups, device.status, c);
+  const vlanId =
+    replyAttrs.find((attr) => attributeKey(attr.name) === "tunnel-private-group-id")?.value ??
+    String(device.status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
+
+  req.log.info(
+    {
+      username: device.user.username,
+      mac: normalizedMac,
+      deviceStatus: device.status,
+      authMethod: "eap-tls",
+      certCommonName: certificate.commonName,
+      certFingerprint: certificate.fingerprint,
+      vlanId,
+    },
+    "radius.authorize eap-tls",
+  );
+
+  const response: RlmRestResponse = { reply: replyAttrs };
+  return reply.status(200).send(response);
+}
 
 const radiusRoutes: FastifyPluginAsync = async (app) => {
-  // ── Shared-secret guard ─────────────────────────────────────────
   app.addHook("preHandler", async (req, reply) => {
     const expected = config().RADIUS_HOOK_SECRET;
     const received = req.headers["x-radius-hook-secret"];
     if (!received || received !== expected) {
-      req.log.warn({ ip: req.ip }, "radius.hook unauthorized — bad or missing secret");
+      req.log.warn({ ip: req.ip }, "radius.hook unauthorized");
       return reply.status(401).send({ error: "Unauthorized" });
     }
   });
 
-  // ── POST /authorize ─────────────────────────────────────────────
-  app.post<{
-    Body: {
-      username:        string;
-      mac:             string;
-      nasIp:           string;
-      nasIdentifier?:  string;
-      calledStationId?: string;
-    };
-  }>("/authorize", async (req, reply) => {
-    const { username, mac, nasIp } = req.body;
-    const c = config();
-
-    // 1. Load user + credentials.
-    const user = await prisma.user.findUnique({
-      where:   { username },
-      include: { secret: true },
-    });
-
-    if (!user || user.status !== "active" || !user.secret) {
-      req.log.info({ username }, "radius.authorize user not found or inactive");
-      return reply.status(404).send({ error: "User not found" });
+  app.post<{ Body: AuthorizeBody }>("/authorize", async (req, reply) => {
+    const authMethod = req.body.authMethod === "eap-tls" ? "eap-tls" : "peap";
+    if (authMethod === "eap-tls") {
+      return authorizeEapTls(req, reply, req.body);
     }
-
-    // NT-Password must be 32 hex chars (16-byte MD4 hash).
-    const ntHash = user.secret.ntHash;
-    if (!ntHash || ntHash.length !== 32) {
-      req.log.warn({ username }, "radius.authorize missing ntHash");
-      return reply.status(500).send({ error: "No NT-Password configured" });
-    }
-
-    // 2. Normalize MAC (lowercase, colon-separated).
-    const normalizedMac = normalizeMac(mac);
-
-    // 3. Look up device status.
-    const device = await prisma.userDevice.findFirst({
-      where: { userId: user.id, mac: normalizedMac },
-    });
-
-    if (device?.status === "rejected") {
-      req.log.info({ username, mac: normalizedMac }, "radius.authorize device rejected");
-      return reply.status(403).send({ error: "Device rejected" });
-    }
-
-    // 4. Choose VLAN: approved device → normal, otherwise quarantine.
-    const vlanId = device?.status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID;
-
-    req.log.info(
-      { username, mac: normalizedMac, deviceStatus: device?.status ?? "new", vlanId },
-      "radius.authorize ok",
-    );
-
-    const response: RlmRestResponse = {
-      control: [
-        // NT-Password value: FreeRADIUS expects 0x-prefixed hex for octets.
-        { name: "NT-Password", value: `0x${ntHash}`, op: ":=" },
-        { name: "Auth-Type",   value: "MS-CHAP",     op: ":=" },
-      ],
-      reply: vlanReply(vlanId),
-    };
-
-    return reply.status(200).send(response);
+    return authorizePeap(req, reply, req.body);
   });
 
-  // ── POST /post-auth ─────────────────────────────────────────────
   app.post<{
     Body: {
       username: string;
-      mac:      string;
-      nasIp:    string;
-      vlan?:    string;
+      mac: string;
+      nasIp: string;
+      vlan?: string;
     };
   }>("/post-auth", async (req, reply) => {
     const { username, mac, nasIp } = req.body;
-
     const normalizedMac = normalizeMac(mac);
 
     const user = await prisma.user.findUnique({
-      where:  { username },
+      where: { username },
       select: { id: true, username: true, fullName: true },
     });
-    if (!user) {
-      // Shouldn't happen (authorize already checked), but handle gracefully.
-      return reply.status(200).send({ ok: false });
-    }
+    if (!user) return reply.status(200).send({ ok: false });
 
-    // Upsert device — create if first time, update lastSeenAt every time.
     const existing = await prisma.userDevice.findFirst({
       where: { userId: user.id, mac: normalizedMac },
     });
-
     const isNew = !existing;
 
     const device = await prisma.userDevice.upsert({
-      where:  { userId_mac: { userId: user.id, mac: normalizedMac } },
+      where: { userId_mac: { userId: user.id, mac: normalizedMac } },
       create: {
-        userId:     user.id,
-        mac:        normalizedMac,
+        userId: user.id,
+        mac: normalizedMac,
         lastSeenAt: new Date(),
-        status:     "pending",
+        status: "pending",
       },
       update: {
         lastSeenAt: new Date(),
       },
     });
 
-    // For brand-new devices, create the approval record and notify admin.
     if (isNew) {
-      await prisma.deviceApproval.create({
-        data: { deviceId: device.id, status: "pending" },
-      });
-
       req.log.info({ username, mac: normalizedMac, deviceId: device.id }, "radius.new_device");
-
-      // Fire-and-forget Telegram notification.
-      sendApprovalRequest({
-        deviceId: device.id,
+      createPendingApproval(device.id, {
         username: user.username,
         fullName: user.fullName,
-        mac:      normalizedMac,
+        mac: normalizedMac,
         nasIp,
       }).catch((err) => {
-        req.log.error({ err }, "telegram.send_approval_request failed");
+        req.log.error({ err, deviceId: device.id }, "telegram.send_approval_request failed");
       });
     }
 
     return reply.status(200).send({ ok: true, deviceId: device.id, isNew });
   });
 };
-
-// ── Helpers ────────────────────────────────────────────────────────
-
-/**
- * Normalize a MAC address to lowercase colon-separated format.
- * Handles dash-separated (AA-BB-CC) and plain hex (AABBCC).
- */
-function normalizeMac(mac: string): string {
-  const clean = mac.replace(/[^0-9a-fA-F]/g, "").toLowerCase();
-  if (clean.length !== 12) return mac.toLowerCase(); // return as-is if odd format
-  return clean.match(/.{2}/g)!.join(":");
-}
 
 export default radiusRoutes;
