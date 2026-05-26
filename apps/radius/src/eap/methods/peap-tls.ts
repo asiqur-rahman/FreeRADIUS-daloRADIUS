@@ -64,6 +64,12 @@ export interface TlsSession {
   ready: Promise<void>;
   /** Buffered cleartext data the application has received post-handshake. */
   inboundCleartext: Buffer[];
+  /** Set true synchronously inside the 'secure' event handler — this is
+   *  the authoritative signal that handshake is done. Polling
+   *  `socket.getSession()` was unreliable across Node versions. */
+  handshakeComplete: boolean;
+  /** Captured TLS error (if any) for graceful reject after fragmented send. */
+  handshakeError: Error | null;
 }
 
 export interface TlsConfig {
@@ -89,6 +95,20 @@ export function createTlsSession(cfg: TlsConfig): TlsSession {
     // PRF semantics for MSK derivation differ in 1.3.
     maxVersion: "TLSv1.2",
     minVersion: "TLSv1",
+    // Curated cipher list. The defaults Node ships include suites Windows
+    // 10/11 PEAP supplicants reject (they require RFC 5246 mandatory
+    // suites with PFS). This list works across Windows, macOS, iOS,
+    // Android, and wpa_supplicant.
+    ciphers: [
+      "ECDHE-RSA-AES256-GCM-SHA384",
+      "ECDHE-RSA-AES128-GCM-SHA256",
+      "ECDHE-RSA-AES256-SHA384",
+      "ECDHE-RSA-AES128-SHA256",
+      "AES256-GCM-SHA384",
+      "AES128-GCM-SHA256",
+      "AES256-SHA256",
+      "AES128-SHA256",
+    ].join(":"),
   });
 
   const socket = new TLSSocket(bridge, {
@@ -99,17 +119,34 @@ export function createTlsSession(cfg: TlsConfig): TlsSession {
     rejectUnauthorized: false,
   });
 
-  const inboundCleartext: Buffer[] = [];
+  const session: TlsSession = {
+    socket,
+    bridge,
+    ready: null as unknown as Promise<void>, // set below
+    inboundCleartext: [],
+    handshakeComplete: false,
+    handshakeError: null,
+  };
+
   socket.on("data", (chunk: Buffer) => {
-    inboundCleartext.push(chunk);
+    session.inboundCleartext.push(chunk);
   });
 
-  const ready = new Promise<void>((resolve, reject) => {
-    socket.once("secure", () => resolve());
-    socket.once("error", (err) => reject(err));
+  // 'secure' fires once the TLS handshake completes. Setting the flag
+  // synchronously inside the handler is the only reliable signal —
+  // `getSession()` may return undefined for several ticks afterwards.
+  session.ready = new Promise<void>((resolve, reject) => {
+    socket.once("secure", () => {
+      session.handshakeComplete = true;
+      resolve();
+    });
+    socket.once("error", (err) => {
+      session.handshakeError = err;
+      reject(err);
+    });
   });
 
-  return { socket, bridge, ready, inboundCleartext };
+  return session;
 }
 
 /**
@@ -125,14 +162,21 @@ export function takeCleartext(session: TlsSession): Buffer {
 }
 
 /**
- * Wait until the bridge has TLS bytes to send, or until the TLS layer
- * indicates there's nothing more to flush. We poll on next-tick because
- * Node's TLS machinery is asynchronous internally.
+ * Drain TLS output after letting Node's TLS state machine fully
+ * process the latest input. We yield to the event loop a bounded
+ * number of times — each `setImmediate` lets TLS push more records
+ * into the bridge — then drain whatever has accumulated.
+ *
+ * This is preferable to a wall-clock timeout: TLS handshake records
+ * arrive in a deterministic number of microtasks (typically 1–3 per
+ * inbound record), so once those have flushed, no further yields
+ * will produce more bytes.
  */
-export async function flushTlsOutput(session: TlsSession, timeoutMs = 100): Promise<Buffer> {
-  const deadline = Date.now() + timeoutMs;
-  while (!session.bridge.hasPending() && Date.now() < deadline) {
+export async function flushTlsOutput(session: TlsSession, maxYields = 8): Promise<Buffer> {
+  for (let i = 0; i < maxYields; i++) {
     await new Promise<void>((r) => setImmediate(r));
+    // If TLS errored, stop pumping — caller will see the error via session.handshakeError.
+    if (session.handshakeError) break;
   }
   return session.bridge.drainOut();
 }

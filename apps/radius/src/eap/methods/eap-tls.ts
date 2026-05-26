@@ -121,6 +121,11 @@ export async function continueEapTls(args: EapTlsContinueArgs): Promise<EapTlsCo
   }
   state.inboundBuffer = Buffer.concat([state.inboundBuffer, peap.tls]);
 
+  // Surface a TLS error the moment we see the next packet.
+  if (state.tls.handshakeError) {
+    return reject(eapPacket.identifier, "tls_error", state.tls.handshakeError.message);
+  }
+
   if (peap.moreFragments) {
     return {
       status: "challenge",
@@ -145,10 +150,17 @@ export async function continueEapTls(args: EapTlsContinueArgs): Promise<EapTlsCo
     state.inboundTotal = null;
   }
 
-  const tlsOut = await flushTlsOutput(state.tls, 200);
+  const tlsOut = await flushTlsOutput(state.tls);
 
-  // Check handshake state.
-  if (state.tls.socket.getSession() !== undefined && !state.handshakeDone) {
+  // Re-check after the flush (TS narrowing makes the same property look
+  // like `never` without the explicit type assertion).
+  const hsErr = state.tls.handshakeError as Error | null;
+  if (hsErr) {
+    return reject(eapPacket.identifier, "tls_error", hsErr.message);
+  }
+
+  // Check handshake state — use the authoritative `secure`-event flag.
+  if (state.tls.handshakeComplete && !state.handshakeDone) {
     state.handshakeDone = true;
     // Verify the client cert fingerprint pin.
     const peerCert = state.tls.socket.getPeerCertificate(true);

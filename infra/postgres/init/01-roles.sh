@@ -22,7 +22,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
   DO \$\$
   BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${APP_DB_USER}') THEN
-      CREATE ROLE ${APP_DB_USER} LOGIN PASSWORD '${APP_DB_PASSWORD}';
+      -- CREATEDB is needed for Prisma Migrate's shadow database (dev only).
+      -- Restrict in production: Prisma migrate deploy doesn't need CREATEDB.
+      CREATE ROLE ${APP_DB_USER} LOGIN CREATEDB PASSWORD '${APP_DB_PASSWORD}';
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${RADIUS_DB_USER}') THEN
       CREATE ROLE ${RADIUS_DB_USER} LOGIN PASSWORD '${RADIUS_DB_PASSWORD}';

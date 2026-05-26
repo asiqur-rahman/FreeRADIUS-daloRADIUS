@@ -18,7 +18,10 @@ services:
       RADIUS_DB_USER: ${RADIUS_DB_USER:-radius_user}
       RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-radius_user_dev_password}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Default to 5433 on the host so we don't fight an existing
+      # local PostgreSQL install (Windows users often have one on 5432).
+      # Override via .env's POSTGRES_PORT to use a different host port.
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -46,15 +49,20 @@ services:
       retries: 5
 
   # ─────────────────────────────────────────────────────────────────────
-  # FreeRADIUS 3.x — 802.1X auth server with SQL backend.
+  # FreeRADIUS — moved behind the `freeradius` compose profile.
   #
-  # Built from infra/freeradius/Dockerfile so our customisations
-  # (clients.conf, sql mod, default + inner-tunnel sites) overlay
-  # the upstream raddb instead of masking it via a bind mount.
-  # The upstream image generates dev EAP certs under /etc/raddb/certs
-  # on first boot; rebuild the image to refresh them.
+  # Plan A's in-house radius server (apps/radius) now owns 1812/1813/3799
+  # by default; FreeRADIUS stays in the tree as a reference / fallback
+  # implementation and only starts when the profile is enabled:
+  #
+  #     docker compose --profile freeradius up
+  #
+  # If you ever want to run both side-by-side (e.g. to compare reject
+  # reasons), bring FreeRADIUS up on alternate ports by overriding the
+  # ports section in a docker-compose.override.yml.
   # ─────────────────────────────────────────────────────────────────────
   freeradius:
+    profiles: ["freeradius"]
     build:
       context: ./infra/freeradius
       dockerfile: Dockerfile

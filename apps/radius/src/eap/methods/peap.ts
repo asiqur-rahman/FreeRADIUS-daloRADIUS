@@ -58,6 +58,9 @@ type InnerPhase =
 
 export interface PeapState {
   tls: TlsSession;
+  /** PEAP version we'll echo back. Locked to whatever the supplicant
+   *  sent on its first non-Start packet. */
+  version: number;
   /** Inbound fragments accumulating into a full TLS message. */
   inboundBuffer: Buffer;
   /** Total length signalled by L=1 on the first fragment; null if none seen. */
@@ -111,6 +114,7 @@ export function startPeap(args: PeapStartArgs): { eapBytes: Buffer; state: PeapS
 
   const state: PeapState = {
     tls,
+    version: 0, // we offer v0; supplicant may downgrade-confirm or echo
     inboundBuffer: Buffer.alloc(0),
     inboundTotal: null,
     outboundQueue: Buffer.alloc(0),
@@ -155,6 +159,18 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
 
   const peap = decodePeap(eapPacket.data);
 
+  // Lock onto whatever PEAP version the supplicant uses on its first
+  // non-Start packet. Most clients negotiate down to v0, but iOS/macOS
+  // sometimes offer v1; echoing back what we received avoids tear-down.
+  if (peap.version !== state.version) {
+    state.version = peap.version;
+  }
+
+  // Surface TLS errors from earlier rounds the moment we see the next packet.
+  if (state.tls.handshakeError) {
+    return reject(eapPacket.identifier, "tls_error", state.tls.handshakeError.message);
+  }
+
   // ── Accumulate inbound fragment ──────────────────────────────
   if (peap.lengthIncluded && peap.totalLength !== undefined) {
     state.inboundTotal = peap.totalLength;
@@ -164,7 +180,7 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
   // If supplicant says "more fragments coming", reply with an empty PEAP ACK.
   if (peap.moreFragments) {
     const ack = encodePeap({
-      version: 0,
+      version: state.version,
       lengthIncluded: false,
       moreFragments: false,
       start: false,
@@ -190,10 +206,17 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
 
   // Let TLS process. If the handshake is complete and we're past the
   // first round, this delivers inner-EAP cleartext to the bridge.
-  const tlsOut = await flushTlsOutput(state.tls, 200);
+  const tlsOut = await flushTlsOutput(state.tls);
+
+  // Surface a handshake error that happened during the last flush.
+  // (re-check — `flushTlsOutput` may have set this since the earlier guard)
+  const hsErr = state.tls.handshakeError as Error | null;
+  if (hsErr) {
+    return reject(eapPacket.identifier, "tls_error", hsErr.message);
+  }
 
   // ── Post-handshake: drive the inner EAP exchange ─────────────
-  if (isHandshakeDone(state)) {
+  if (state.tls.handshakeComplete) {
     const innerCleartext = takeCleartext(state.tls);
     if (innerCleartext.length > 0) {
       return await handleInnerEap(innerCleartext, args, tlsOut);
@@ -208,7 +231,7 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
         data: Buffer.alloc(0),
       });
       state.tls.socket.write(innerRequest);
-      const moreOut = await flushTlsOutput(state.tls, 200);
+      const moreOut = await flushTlsOutput(state.tls);
       return outgoingPeapFragment(state, Buffer.concat([tlsOut, moreOut]), eapPacket.identifier);
     }
   }
@@ -216,6 +239,10 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
   // ── Handshake still in flight — chunk the TLS output as a PEAP frag ──
   return outgoingPeapFragment(state, tlsOut, eapPacket.identifier);
 }
+
+// Removed: the old isHandshakeDone() heuristic. We now key off
+// `state.tls.handshakeComplete`, set synchronously in the 'secure'
+// event handler — reliable across Node versions.
 
 // ── Inner EAP exchange (PEAPv0, EAP-MSCHAPv2 only) ────────────────
 
@@ -259,7 +286,7 @@ async function handleInnerEap(
     state.innerPhase = { kind: "sent-challenge", authChallenge, msChapId };
     state.innerEapId = (inner.identifier + 1) & 0xff;
     state.tls.socket.write(innerReq);
-    const moreOut = await flushTlsOutput(state.tls, 200);
+    const moreOut = await flushTlsOutput(state.tls);
     return outgoingPeapFragment(
       state,
       Buffer.concat([pendingTlsOut, moreOut]),
@@ -310,7 +337,7 @@ async function handleInnerEap(
     state.innerPhase = { kind: "sent-mschap-success", authResp };
     state.innerEapId = (inner.identifier + 1) & 0xff;
     state.tls.socket.write(innerReq);
-    const moreOut = await flushTlsOutput(state.tls, 200);
+    const moreOut = await flushTlsOutput(state.tls);
     return outgoingPeapFragment(
       state,
       Buffer.concat([pendingTlsOut, moreOut]),
@@ -360,16 +387,6 @@ function innerReject(state: PeapState, eapId: number, reason: string): PeapOutco
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function isHandshakeDone(state: PeapState): boolean {
-  // The 'secure' event sets authorized/authorizationError on the
-  // TLSSocket. We can't easily inspect 'secure'-fired state without
-  // listening; the bridge having no pending TLS handshake records out
-  // is a good proxy after our flush.
-  // A cleaner approach: track a `secured` boolean via socket.once('secure').
-  // We approximate by checking whether the socket has an active session.
-  return state.tls.socket.getSession() !== undefined;
-}
-
 /**
  * Take a chunk of outbound TLS bytes and wrap them into the next PEAP
  * fragment. If they exceed PEAP_MTU we set the M-bit and stash the
@@ -393,7 +410,7 @@ function outgoingPeapFragment(
     // Nothing pending — supplicant probably ACKed our final fragment.
     // Send an empty PEAP packet (acts as a probe).
     const empty = encodePeap({
-      version: 0,
+      version: state.version,
       lengthIncluded: false,
       moreFragments: false,
       start: false,
@@ -418,7 +435,7 @@ function outgoingPeapFragment(
   const more = remaining.length > 0;
 
   const peapBytes = encodePeap({
-    version: 0,
+    version: state.version,
     lengthIncluded: isFirstFragment,
     moreFragments: more,
     start: false,

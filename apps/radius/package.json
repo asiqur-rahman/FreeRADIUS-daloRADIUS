@@ -5,12 +5,14 @@
   "type": "module",
   "description": "In-house RADIUS server. Replaces FreeRADIUS for the Phase 1-3 wire surface (Phase A1).",
   "scripts": {
-    "dev": "node --openssl-legacy-provider --import tsx --watch src/index.ts",
+    "dev": "node --openssl-legacy-provider --env-file=.env --import tsx --watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node --openssl-legacy-provider dist/index.js",
+    "start": "node --openssl-legacy-provider --env-file=.env dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "node --openssl-legacy-provider --env-file=test/.env --import tsx --test \"test/**/*.test.ts\"",
-    "lint": "eslint \"src/**/*.ts\""
+    "lint": "eslint \"src/**/*.ts\"",
+    "rig:seed": "node --openssl-legacy-provider --env-file=.env --import tsx scripts/seed-test-rig.ts",
+    "rig:test-peap": "node --openssl-legacy-provider --env-file=.env --import tsx scripts/test-peap.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
