@@ -75,6 +75,7 @@ Since this planning file was first written, the codebase has moved forward in tw
 - The Phase 3 backend API is now in place with `GET /api/v1/admin/devices`, `PATCH /api/v1/admin/devices/:id`, `GET /api/v1/admin/approvals`, and `GET /api/v1/admin/users/:id/devices`.
 - The Phase 3 admin UI now has a live Device Approvals workspace in `apps/web`, with a pending queue, full device inventory, approval history, and per-user device inspection backed by those APIs.
 - Phase 4 per-group VLAN policy is now live: approved devices inherit group reply attributes from the REST authorize hook, with VLAN editing exposed in the Groups UI.
+- Phase 5 is now wired in code: FreeRADIUS has a `check-eap-tls` hook into `/api/v1/radius/authorize`, the admin dashboard can bind or issue managed client certificates per device, and `UserDevice.certFingerprint` is now the EAP-TLS device identity digest.
 
 The remaining work for Phase 2 is now mostly AP verification: confirm how the TP-Link firmware behaves with Disconnect/CoA and decide whether Disconnect-Request is enough or whether a true CoA-Request variant is needed.
 
@@ -169,10 +170,11 @@ For per-department or per-role VLANs:
 
 For company-owned laptops / MDM-enrolled devices:
 
-- [ ] Enable `EAP-TLS` in FreeRADIUS `eap` module config
-- [ ] Add client certificate provisioning workflow (admin generates + downloads cert)
-- [ ] Update `UserDevice` with `certFingerprint` (field already exists in schema)
-- [ ] Update `/authorize` to return `EAP-TLS` control attributes when a client cert is presented
+- [x] Enable `EAP-TLS` in FreeRADIUS `eap` module config
+- [x] Add client certificate binding + managed issuance workflow in the admin dashboard
+- [x] Use `UserDevice.certFingerprint` as the EAP-TLS device identity digest
+- [x] Update `/authorize` to return policy for a presented client cert via `check-eap-tls`
+- [ ] Live-verify EAP-TLS against your AP and a supplicant with a trusted client CA
 
 ---
 
