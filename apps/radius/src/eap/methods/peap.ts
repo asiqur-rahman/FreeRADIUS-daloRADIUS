@@ -230,7 +230,7 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
         type: EapType.Identity,
         data: Buffer.alloc(0),
       });
-      state.tls.socket.write(innerRequest);
+      writeInnerEap(state, innerRequest);
       const moreOut = await flushTlsOutput(state.tls);
       return outgoingPeapFragment(state, Buffer.concat([tlsOut, moreOut]), eapPacket.identifier);
     }
@@ -243,6 +243,23 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
 // Removed: the old isHandshakeDone() heuristic. We now key off
 // `state.tls.handshakeComplete`, set synchronously in the 'secure'
 // event handler — reliable across Node versions.
+
+/**
+ * Write an inner EAP packet through the TLS tunnel using the PEAPv0
+ * dialect — strip the outer EAP header (code/id/length) and send only
+ * `type | type-data`. Microsoft supplicants (Windows, iOS, macOS,
+ * Android stock) all expect this bare-TLV form inside PEAPv0; sending
+ * a full EAP header causes them to silently drop or misparse the
+ * packet and retry from the last successful inner Identity round.
+ *
+ * EAP-Success / EAP-Failure aren't sent through the tunnel — they
+ * terminate the outer exchange — so we don't handle them here.
+ */
+function writeInnerEap(state: PeapState, eapBytes: Buffer): void {
+  if (eapBytes.length < 5) return; // not a Request/Response
+  // Drop the 4-byte EAP header, keep type + data.
+  state.tls.socket.write(Buffer.from(eapBytes.subarray(4)));
+}
 
 // ── Inner EAP exchange (PEAPv0, EAP-MSCHAPv2 only) ────────────────
 
@@ -257,8 +274,10 @@ async function handleInnerEap(
   // dialects. Try to decode as a full EAP packet first; fall back to
   // "type + data" if the length looks wrong.
   let inner: EapPacket;
+  let decodePath: "full-eap" | "bare-tlv";
   try {
     inner = decodeEap(cleartext);
+    decodePath = "full-eap";
   } catch {
     // Treat as bare "type | data".
     inner = {
@@ -267,7 +286,25 @@ async function handleInnerEap(
       type: cleartext[0],
       data: Buffer.from(cleartext.subarray(1)),
     };
+    decodePath = "bare-tlv";
   }
+
+  // Diagnostic: log what arrived inside the tunnel + how we parsed it.
+  // Real-supplicant interop bugs almost always show up here — Windows
+  // sometimes ships PEAP-TLV messages, sometimes bare EAP, sometimes
+  // padded weirdness. Cheap, fires once per inner round.
+  log.info(
+    {
+      phase: state.innerPhase.kind,
+      decodePath,
+      cleartextLen: cleartext.length,
+      cleartextHex: cleartext.subarray(0, Math.min(32, cleartext.length)).toString("hex"),
+      innerType: inner.type,
+      innerLen: inner.data.length,
+      innerDataHex: inner.data.subarray(0, Math.min(16, inner.data.length)).toString("hex"),
+    },
+    "peap.inner_rx",
+  );
 
   // Phase A — supplicant sends inner Identity → respond with MSCHAPv2 Challenge.
   if (state.innerPhase.kind === "expect-identity") {
@@ -285,7 +322,7 @@ async function handleInnerEap(
     });
     state.innerPhase = { kind: "sent-challenge", authChallenge, msChapId };
     state.innerEapId = (inner.identifier + 1) & 0xff;
-    state.tls.socket.write(innerReq);
+    writeInnerEap(state, innerReq);
     const moreOut = await flushTlsOutput(state.tls);
     return outgoingPeapFragment(
       state,
@@ -336,7 +373,7 @@ async function handleInnerEap(
     });
     state.innerPhase = { kind: "sent-mschap-success", authResp };
     state.innerEapId = (inner.identifier + 1) & 0xff;
-    state.tls.socket.write(innerReq);
+    writeInnerEap(state, innerReq);
     const moreOut = await flushTlsOutput(state.tls);
     return outgoingPeapFragment(
       state,
@@ -380,7 +417,9 @@ function buildMsChapV2Challenge(authChallenge: Buffer, serverName: string, msCha
 }
 
 function innerReject(state: PeapState, eapId: number, reason: string): PeapOutcome {
-  log.debug({ reason }, "peap.inner_reject");
+  // Promoted from debug → warn so operators see exactly which inner-method
+  // step blew up. `state.innerPhase.kind` tells us where in the flow we were.
+  log.warn({ reason, phase: state.innerPhase.kind }, "peap.inner_reject");
   state.innerPhase = { kind: "done" };
   return reject(eapId, "peap_inner_failed", reason);
 }

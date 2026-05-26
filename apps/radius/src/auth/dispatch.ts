@@ -65,6 +65,14 @@ export async function handleAccessRequest(
 
   const subject = await ctx.backend.loadSubject(rawUsername);
   if (!subject) {
+    // Diagnostic: log the raw bytes of the User-Name attribute so we
+    // can spot NUL terminators, trailing whitespace, encoding weirdness
+    // that don't show up in psql output. Cheap; only fires on rejects.
+    const rawBytes = Buffer.from(rawUsername, "utf8").toString("hex");
+    log.warn(
+      { rawUsername, rawBytes, length: rawUsername.length },
+      "auth.unknown_user",
+    );
     // Don't disclose whether the user exists — same response either way.
     await ctx.backend.logPostAuth({
       username: rawUsername,

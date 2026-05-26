@@ -35,18 +35,30 @@ export interface AuthBackend {
 /**
  * Normalise a User-Name attribute for lookup.
  *
- * Real-world clients send a mix of: `alice`, `alice@example.com`,
- * `DOMAIN\\alice`. We accept all three and resolve to the canonical
- * lowercase `username` column. The original (post-normalisation) form
- * is what we feed back to the MSCHAP ChallengeHash, however — see
- * mschapv2.ts for that subtlety.
+ * Real-world clients send a mix of:
+ *   - `alice`
+ *   - `alice@example.com` (UPN)
+ *   - `DOMAIN\alice` (down-level logon)
+ *   - `alice\0` (C-string null terminator — some embedded NAS firmware)
+ *   - `  alice  ` (trailing whitespace — same culprits)
+ *
+ * We accept them all and resolve to the canonical lowercase `username`
+ * column. The original (post-normalisation) form is what we feed back
+ * to the MSCHAP ChallengeHash — see mschapv2.ts for that subtlety.
  */
 export function normaliseUsername(raw: string): string {
   let v = raw;
-  // Down-level logon format: DOMAIN\user → user
+  // 1) Strip NUL and other ASCII control chars (defensive — RFC 2865
+  //    says String attrs are not null-terminated, but some firmware
+  //    ships them anyway).
+  // eslint-disable-next-line no-control-regex
+  v = v.replace(/[\x00-\x1f\x7f]/g, "");
+  // 2) Trim whitespace.
+  v = v.trim();
+  // 3) Down-level logon format: DOMAIN\user → user
   const slash = v.lastIndexOf("\\");
   if (slash !== -1) v = v.slice(slash + 1);
-  // UPN: user@realm → user
+  // 4) UPN: user@realm → user
   const at = v.indexOf("@");
   if (at !== -1) v = v.slice(0, at);
   return v.toLowerCase();
