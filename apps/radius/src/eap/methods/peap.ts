@@ -38,6 +38,7 @@ import {
   randomChallenge,
   verifyNtResponse,
 } from "../../protocol/mschap.js";
+import { buildSuccessRequest } from "./mschapv2.js";
 import {
   createTlsSession,
   deriveMsk,
@@ -222,6 +223,7 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
       return await handleInnerEap(innerCleartext, args, tlsOut);
     }
     if (state.innerPhase.kind === "expect-identity") {
+      log.info("peap.tls_established_waiting_for_inner_identity");
       // Tunnel established, but supplicant hasn't sent inner Identity yet —
       // send an inner EAP-Request/Identity to prompt it.
       const innerRequest = encodeEap({
@@ -237,6 +239,15 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
   }
 
   // ── Handshake still in flight — chunk the TLS output as a PEAP frag ──
+  log.debug(
+    {
+      tlsOutBytes: tlsOut.length,
+      handshakeComplete: state.tls.handshakeComplete,
+      inboundBuffered: state.inboundBuffer.length,
+      outboundQueued: state.outboundQueue.length,
+    },
+    "peap.tls_progress",
+  );
   return outgoingPeapFragment(state, tlsOut, eapPacket.identifier);
 }
 
@@ -245,20 +256,29 @@ export async function continuePeap(args: PeapContinueArgs): Promise<PeapOutcome>
 // event handler — reliable across Node versions.
 
 /**
- * Write an inner EAP packet through the TLS tunnel using the PEAPv0
- * dialect — strip the outer EAP header (code/id/length) and send only
- * `type | type-data`. Microsoft supplicants (Windows, iOS, macOS,
- * Android stock) all expect this bare-TLV form inside PEAPv0; sending
- * a full EAP header causes them to silently drop or misparse the
- * packet and retry from the last successful inner Identity round.
+ * Write an inner EAP packet through the TLS tunnel.
  *
- * EAP-Success / EAP-Failure aren't sent through the tunnel — they
- * terminate the outer exchange — so we don't handle them here.
+ * PEAPv0 interop is annoyingly inconsistent across supplicants:
+ * - many clients accept a full inner EAP-Request/Identity
+ * - some expect subsequent method packets as bare `type|data`
+ *
+ * To maximize Android interoperability we use a hybrid strategy:
+ * - inner Identity request: send the full EAP packet
+ * - subsequent typed method packets: send bare `type|data`
+ *
+ * Our receive path already accepts either form from the supplicant.
  */
 function writeInnerEap(state: PeapState, eapBytes: Buffer): void {
-  if (eapBytes.length < 5) return; // not a Request/Response
-  // Drop the 4-byte EAP header, keep type + data.
-  state.tls.socket.write(Buffer.from(eapBytes.subarray(4)));
+  if (eapBytes.length === 0) return;
+  if (eapBytes.length >= 5 && eapBytes[4] === EapType.Identity) {
+    state.tls.socket.write(Buffer.from(eapBytes));
+    return;
+  }
+  if (eapBytes.length >= 5) {
+    state.tls.socket.write(Buffer.from(eapBytes.subarray(4)));
+    return;
+  }
+  state.tls.socket.write(Buffer.from(eapBytes));
 }
 
 // ── Inner EAP exchange (PEAPv0, EAP-MSCHAPv2 only) ────────────────
@@ -361,10 +381,7 @@ async function handleInnerEap(
     );
 
     // Send inner MSCHAPv2 Success.
-    const successData = Buffer.concat([
-      Buffer.from([3]), // OpCode.Success
-      Buffer.from(`S=${authResp.toString("hex").toUpperCase()} M=OK`, "ascii"),
-    ]);
+    const successData = buildSuccessRequest(state.innerPhase.msChapId, authResp);
     const innerReq = encodeEap({
       code: EapCode.Request,
       identifier: (inner.identifier + 1) & 0xff,

@@ -126,18 +126,16 @@ export function verifyResponse(
  * verified the NT-Response). Supplicant responds with a Success op-code
  * of its own; the framework then emits EAP-Success.
  *
- * Type-data: OpCode(3) | "S=<hex> M=<msg>"
+ * Type-data: OpCode(3) | MSCHAPv2-Id(1) | MS-Length(2) | "S=<hex> M=<msg>"
  */
 export function buildSuccessRequest(msChapId: number, authenticatorResponse: Buffer): Buffer {
   const hex = authenticatorResponse.toString("hex").toUpperCase();
   const body = Buffer.from(`S=${hex} M=Authentication succeeded`, "ascii");
-  const out = Buffer.alloc(1 + body.length);
+  const out = Buffer.alloc(1 + 1 + 2 + body.length);
   out.writeUInt8(OpCode.Success, 0);
-  body.copy(out, 1);
-  // Note: per draft, MSCHAPv2-Id and MS-Length are NOT included on Success/Failure
-  // EAP-Requests sent in the MSCHAPv2-over-EAP profile (only inside PPP MSCHAP).
-  // The opcode + ASCII payload is what major implementations (FreeRADIUS, hostapd,
-  // wpa_supplicant) interoperate on.
+  out.writeUInt8(msChapId & 0xff, 1);
+  out.writeUInt16BE(out.length, 2);
+  body.copy(out, 4);
   return out;
 }
 
@@ -145,9 +143,11 @@ export function buildFailureRequest(msChapId: number, errorCode = 691): Buffer {
   // "E=<errorcode> R=0 V=3 M=<msg>" — RFC 2759 §8.4.
   // 691 = ERROR_AUTHENTICATION_FAILURE.
   const body = Buffer.from(`E=${errorCode} R=0 V=3 M=Authentication failed`, "ascii");
-  const out = Buffer.alloc(1 + body.length);
+  const out = Buffer.alloc(1 + 1 + 2 + body.length);
   out.writeUInt8(OpCode.Failure, 0);
-  body.copy(out, 1);
+  out.writeUInt8(msChapId & 0xff, 1);
+  out.writeUInt16BE(out.length, 2);
+  body.copy(out, 4);
   return out;
 }
 

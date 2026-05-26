@@ -23,6 +23,7 @@ export interface TlsMaterial {
 }
 
 let cached: TlsMaterial | undefined;
+const DEV_FALLBACK_CN = "radius-platform.local";
 
 export function loadTlsMaterial(opts: {
   certPath?: string;
@@ -42,7 +43,7 @@ export function loadTlsMaterial(opts: {
     "tls.dev_self_signed_fallback — generating an ephemeral self-signed cert. " +
       "Configure TLS_CERT_PATH / TLS_KEY_PATH for production.",
   );
-  const attrs = [{ name: "commonName", value: "radius-platform.local" }];
+  const attrs = [{ name: "commonName", value: DEV_FALLBACK_CN }];
   const result = selfsigned.generate(attrs, {
     days: 365,
     keySize: 2048,
@@ -59,6 +60,14 @@ export function loadTlsMaterial(opts: {
         serverAuth: true,
         clientAuth: true,
       },
+      {
+        name: "subjectAltName",
+        altNames: [
+          { type: 2, value: DEV_FALLBACK_CN },
+          { type: 2, value: "localhost" },
+          { type: 7, ip: "127.0.0.1" },
+        ],
+      },
     ],
   });
   cached = {
@@ -66,6 +75,14 @@ export function loadTlsMaterial(opts: {
     key: Buffer.from(result.private, "utf8"),
     fromDisk: false,
   };
+  log.info(
+    {
+      cn: DEV_FALLBACK_CN,
+      sanDns: [DEV_FALLBACK_CN, "localhost"],
+      sanIp: ["127.0.0.1"],
+    },
+    "tls.dev_self_signed_ready",
+  );
   return cached;
 }
 

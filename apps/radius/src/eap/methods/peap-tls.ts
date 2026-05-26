@@ -14,6 +14,7 @@
 
 import { Duplex } from "node:stream";
 import { TLSSocket, createSecureContext, type SecureContext } from "node:tls";
+import { log } from "../../log.js";
 
 class TlsBridge extends Duplex {
   /** Bytes the TLSSocket wants to send out (handshake records or encrypted app data). */
@@ -138,10 +139,18 @@ export function createTlsSession(cfg: TlsConfig): TlsSession {
   session.ready = new Promise<void>((resolve, reject) => {
     socket.once("secure", () => {
       session.handshakeComplete = true;
+      log.info(
+        {
+          protocol: socket.getProtocol(),
+          cipher: socket.getCipher()?.name,
+        },
+        "peap.tls_secure",
+      );
       resolve();
     });
     socket.once("error", (err) => {
       session.handshakeError = err;
+      log.warn({ err: err.message }, "peap.tls_handshake_failed");
       reject(err);
     });
   });
