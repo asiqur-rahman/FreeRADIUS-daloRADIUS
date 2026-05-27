@@ -30,6 +30,7 @@ import {
   updateNas,
 } from "../api/endpoints";
 import { ApiCallError } from "../api/client";
+import { PageHelp } from "../components/PageHelp";
 
 const VENDORS: NasVendor[] = ["cisco", "aruba", "ubiquiti", "mikrotik", "meraki", "other"];
 
@@ -65,7 +66,10 @@ export function LiveNasView() {
 
   return (
     <div className="space-y-4">
-      <Header onCreate={() => setCreating(true)} onReload={reload} loading={loading} />
+      <div className="flex items-center gap-2">
+        <Header onCreate={() => setCreating(true)} onReload={reload} loading={loading} />
+        <PageHelp title="NAS Clients" description="Network Access Servers (NAS) are the access points, switches, or controllers that forward RADIUS authentication requests to this server. Each NAS must have a registered IP address and a shared secret that exactly matches the device's own RADIUS client configuration." tips={["The shared secret must match exactly what is configured on the AP or switch — a mismatch causes all authentication requests from that device to silently fail", "CoA port (default 3799) is used to send Disconnect-Requests and policy-change packets to live sessions on the NAS", "NAS entries are stored in the 'nas' Postgres table and read by FreeRADIUS via the SQL module — no SSH or config file editing required"]} />
+      </div>
       {err && (
         <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />

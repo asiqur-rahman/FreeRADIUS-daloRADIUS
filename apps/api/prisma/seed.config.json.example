@@ -1,0 +1,22 @@
+{
+  "admin": {
+    "username": "admin",
+    "password": "ChangeMe123!",
+    "email": "admin@example.local",
+    "fullName": "Platform Administrator"
+  },
+  "testUser": {
+    "username": "wifi-test",
+    "password": "ChangeMe123!",
+    "email": "wifi-test@example.local",
+    "fullName": "WiFi Test User"
+  },
+  "nas": {
+    "ip": "",
+    "secret": "your-radius-shared-secret",
+    "shortname": "lab-ap",
+    "vendor": "other",
+    "coaPort": 3799,
+    "description": "Seeded lab AP for field validation"
+  }
+}

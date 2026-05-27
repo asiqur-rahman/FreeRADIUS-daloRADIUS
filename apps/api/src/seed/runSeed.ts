@@ -1,6 +1,14 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword, ntHash } from "../lib/password.js";
 import { syncGroupToRadius, syncNasToRadius, syncUserToRadius } from "../services/radiusPolicy.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const seedConfig = JSON.parse(
+  readFileSync(resolve(__dirname, "../../prisma/seed.config.json"), "utf8")
+);
 
 const prisma = new PrismaClient();
 
@@ -44,10 +52,13 @@ export async function runSeed() {
     },
   });
 
-  const adminUsername = "admin";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "admin1234!";
-  const testUsername = process.env.SEED_TEST_USERNAME ?? "wifi-test";
-  const testPassword = process.env.SEED_TEST_USER_PASSWORD ?? "wifi12345!";
+  const { username: adminUsername, password: adminPassword, email: adminEmail, fullName: adminFullName } = seedConfig.admin;
+  const { username: testUsername, password: testPassword, email: testEmail, fullName: testFullName } = seedConfig.testUser;
+
+  // Remove any stale user that holds the same email but a different username
+  // (handles the case where the admin username was renamed in seed.config.json)
+  await prisma.user.deleteMany({ where: { email: adminEmail, NOT: { username: adminUsername } } });
+  await prisma.user.deleteMany({ where: { email: testEmail,  NOT: { username: testUsername  } } });
 
   const passwordHashArgon2id = await hashPassword(adminPassword);
   const nthash = ntHash(adminPassword);
@@ -56,11 +67,20 @@ export async function runSeed() {
 
   const admin = await prisma.user.upsert({
     where: { username: adminUsername },
-    update: {},
+    update: {
+      email: adminEmail,
+      fullName: adminFullName,
+      secret: {
+        update: {
+          passwordHashArgon2id,
+          ntHash: nthash,
+        },
+      },
+    },
     create: {
       username: adminUsername,
-      email: "admin@example.local",
-      fullName: "Platform Administrator",
+      email: adminEmail,
+      fullName: adminFullName,
       role: "admin",
       status: "active",
       secret: {
@@ -78,11 +98,20 @@ export async function runSeed() {
 
   const testUser = await prisma.user.upsert({
     where: { username: testUsername },
-    update: {},
+    update: {
+      email: testEmail,
+      fullName: testFullName,
+      secret: {
+        update: {
+          passwordHashArgon2id: testPasswordHash,
+          ntHash: testNtHash,
+        },
+      },
+    },
     create: {
       username: testUsername,
-      email: `${testUsername}@example.local`,
-      fullName: "WiFi Test User",
+      email: testEmail,
+      fullName: testFullName,
       role: "user",
       status: "active",
       secret: {
@@ -98,24 +127,19 @@ export async function runSeed() {
     },
   });
 
-  const seededNasIp = process.env.SEED_LAB_NAS_IP?.trim();
-  const seededNasSecret = process.env.SEED_LAB_NAS_SECRET?.trim() || "testing123radiuslab";
-  const seededNasShortname = process.env.SEED_LAB_NAS_SHORTNAME?.trim() || "lab-ap";
-  const seededNasType = process.env.SEED_LAB_NAS_VENDOR?.trim() || "other";
-  const seededNasCoaPort = Number(process.env.SEED_LAB_NAS_COA_PORT ?? "3799");
-
-  const nas = seededNasIp
+  const nasIp = seedConfig.nas.ip?.trim();
+  const nas = nasIp
     ? await prisma.nasClient.upsert({
-        where: { nasname: seededNasIp },
+        where: { nasname: nasIp },
         update: {},
         create: {
-          nasname: seededNasIp,
-          shortname: seededNasShortname,
-          secret: seededNasSecret,
-          type: seededNasType,
+          nasname: nasIp,
+          shortname: seedConfig.nas.shortname,
+          secret: seedConfig.nas.secret,
+          type: seedConfig.nas.vendor,
           enabled: true,
-          coaPort: Number.isFinite(seededNasCoaPort) ? seededNasCoaPort : 3799,
-          description: "Seeded lab AP for field validation",
+          coaPort: seedConfig.nas.coaPort,
+          description: seedConfig.nas.description,
         },
       })
     : null;
@@ -131,12 +155,12 @@ export async function runSeed() {
   });
 
   writeSeedLine("Seed complete.");
-  writeSeedLine(`  Admin: ${adminUsername} / ${adminPassword}  (change on first login)`);
+  writeSeedLine(`  Admin    : ${adminUsername} / ${adminPassword}  (change on first login)`);
   writeSeedLine(`  Test user: ${testUsername} / ${testPassword}`);
   if (nas) {
-    writeSeedLine(`  NAS: ${nas.nasname} / secret ${seededNasSecret} / CoA ${nas.coaPort}`);
+    writeSeedLine(`  NAS      : ${nas.nasname} / secret ${seedConfig.nas.secret} / CoA ${nas.coaPort}`);
   } else {
-    writeSeedLine("  NAS: skipped (set SEED_LAB_NAS_IP to seed your AP entry)");
+    writeSeedLine("  NAS      : skipped (set nas.ip in prisma/seed.config.json to seed your AP)");
   }
 }
 

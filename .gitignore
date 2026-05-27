@@ -12,6 +12,7 @@ coverage/
 
 # Prisma
 apps/api/prisma/migrations/dev.db*
+apps/api/prisma/seed.config.json
 
 # logs
 *.log

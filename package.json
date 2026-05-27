@@ -19,7 +19,7 @@
     "db:status": "pnpm --filter @app/api run prisma:status",
     "db:deploy": "pnpm --filter @app/api run prisma:deploy",
     "db:generate": "pnpm --filter @app/api run prisma:generate",
-    "db:seed": "pnpm --filter @app/api run seed",
+    "db:seed": "docker exec radius-api node --openssl-legacy-provider prisma/seed.mjs",
     "lab:check": "powershell -File .\\ops\\check-lab-readiness.ps1",
     "lab:config": "powershell -File .\\ops\\print-lab-config.ps1",
     "lab:device-ca": "powershell -File .\\ops\\generate-dev-device-ca.ps1",

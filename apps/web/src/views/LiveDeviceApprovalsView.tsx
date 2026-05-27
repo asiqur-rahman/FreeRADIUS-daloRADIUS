@@ -29,6 +29,7 @@ import {
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSSE } from "../hooks/useSSE";
+import { PageHelp } from "../components/PageHelp";
 
 type DeviceTab = "pending" | "devices" | "history";
 type DeviceFilter = "all" | "pending" | "approved" | "rejected";
@@ -244,7 +245,10 @@ export function LiveDeviceApprovalsView() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Device approvals</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Device approvals</h2>
+            <PageHelp title="Device Approvals" description="First-seen device workflow. When a device authenticates successfully for the first time, it enters Pending state awaiting admin review. Approve it to grant normal network access; Reject it to block future connections from that MAC address. Every decision is logged in the audit trail." tips={["Approval decisions are per device (MAC address), independent of the user account", "Approving a device with an active session triggers an immediate CoA Authorize-Only so the new policy takes effect without disconnecting the user", "The pending count badge in the sidebar and the bell icon update in real time via SSE"]} />
+          </div>
           <p className="mt-0.5 text-sm text-zinc-500">Review first-seen devices, approve or reject them, and track every decision.</p>
         </div>
         <button

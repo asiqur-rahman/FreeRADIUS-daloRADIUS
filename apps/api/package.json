@@ -14,7 +14,7 @@
     "prisma:status": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate status",
     "prisma:deploy": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate deploy",
     "prisma:studio": "node --env-file=../../.env ./node_modules/prisma/build/index.js studio",
-    "seed": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node --env-file=../../.env --openssl-legacy-provider prisma/seed.mjs"
+    "seed": "node --env-file=../../.env --openssl-legacy-provider ./node_modules/tsx/dist/cli.mjs prisma/seed.ts"
   },
   "dependencies": {
     "@app/shared": "workspace:*",

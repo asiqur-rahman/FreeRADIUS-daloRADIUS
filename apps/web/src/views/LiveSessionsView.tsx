@@ -3,6 +3,7 @@ import { Activity, Power, RefreshCw, Search } from "lucide-react";
 import type { RadiusSession } from "@app/shared";
 import { useAuth } from "../auth/AuthContext";
 import { disconnectAdminSession, listAdminSessions } from "../api/endpoints";
+import { PageHelp } from "../components/PageHelp";
 
 function formatBytes(value: string): string {
   const bytes = Number(value);
@@ -80,7 +81,10 @@ export function LiveSessionsView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Accounting Sessions</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Accounting Sessions</h2>
+            <PageHelp title="Accounting Sessions" description="All active RADIUS accounting sessions read directly from the radacct table. Each row represents a device currently connected through a NAS. You can force-disconnect any session with a CoA Disconnect-Request, which immediately terminates the session and forces the device to reauthenticate." tips={["'Active only' filters to sessions that have no Acct-Stop-Time recorded yet", "Disconnect sends an RFC 3576 Disconnect-Message (DM) to the NAS on the configured CoA port (default 3799)", "Search filters by username, MAC address, NAS IP, or calling station ID"]} />
+          </div>
           <p className="text-sm text-zinc-500 mt-0.5">
             Live `radacct` records with authenticated CoA disconnect control
           </p>

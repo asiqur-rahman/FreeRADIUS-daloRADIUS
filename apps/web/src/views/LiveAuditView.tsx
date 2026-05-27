@@ -3,6 +3,7 @@ import { FileText, ShieldAlert } from "lucide-react";
 import type { AuthenticationEvent, AuditLogEntry } from "@app/shared";
 import { listAuditLogs, listAuthenticationEvents } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
+import { PageHelp } from "../components/PageHelp";
 
 export function LiveAuditView() {
   const { token } = useAuth();
@@ -25,7 +26,10 @@ export function LiveAuditView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Audit & Authentication</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Audit & Authentication</h2>
+            <PageHelp title="Audit Log" description="Immutable record of every admin action: user creation, password resets, group policy changes, session disconnects, NAS modifications, and login events. Each entry records who performed the action, what changed, the source IP, and the timestamp." tips={["Audit records cannot be deleted or modified through the UI", "RADIUS authentication events (accept/reject per user) are stored separately in radpostauth", "Use the search and date filters to trace specific incidents or compliance requirements"]} />
+          </div>
           <p className="text-sm text-zinc-500 mt-0.5">Administrative changes and RADIUS/web access outcomes</p>
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex">

@@ -3,6 +3,7 @@ import { Plus, Search, ShieldCheck } from "lucide-react";
 import type { GroupSummary, UserSummary } from "@app/shared";
 import { createUser, listGroups, listUsers, updateUser } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
+import { PageHelp } from "../components/PageHelp";
 
 export function LiveUsersView() {
   const { token } = useAuth();
@@ -57,7 +58,10 @@ export function LiveUsersView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Users</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Users</h2>
+            <PageHelp title="User Management" description="Create and manage WiFi user accounts. Each user is assigned to policy groups that determine their VLAN, session timeout, and bandwidth limits. The password hash and NT-hash are synced to FreeRADIUS immediately on every change." tips={["Users authenticate via PEAP-MSCHAPv2 (username + password) or EAP-TLS (client certificate)", "Assigning a user to a group instantly pushes the RADIUS policy to radcheck and radusergroup tables", "Suspending or deleting a user triggers a CoA Disconnect-Request on any currently active session"]} />
+          </div>
           <p className="text-sm text-zinc-500 mt-0.5">{users.length} records displayed</p>
         </div>
         <button onClick={() => setShowAdd((show) => !show)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg flex items-center gap-2 font-medium">

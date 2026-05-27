@@ -9,6 +9,7 @@ import {
 } from "../api/endpoints";
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PageHelp } from "../components/PageHelp";
 
 const VLAN_ATTRIBUTE_KEYS = new Set([
   "tunnel-type",
@@ -148,7 +149,10 @@ export function LiveGroupsView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Groups & Policy</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Groups & Policy</h2>
+            <PageHelp title="Groups & Policy" description="Policy groups define what network a user lands on after successful authentication. Each group maps to RADIUS reply attributes that FreeRADIUS returns to the NAS — primarily VLAN assignment and session limits. All changes sync to radgroupreply and radusergroup instantly." tips={["VLAN is assigned via Tunnel-Type=VLAN, Tunnel-Medium-Type=IEEE-802, Tunnel-Private-Group-Id", "Session-Timeout sets how many seconds a device stays connected before forced reauthentication", "If a user belongs to multiple groups, the group with the lowest priority number wins"]} />
+          </div>
           <p className="mt-0.5 text-sm text-zinc-500">Per-group VLAN assignment and live RADIUS reply attributes.</p>
         </div>
         <button onClick={() => setShowAdd((show) => !show)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-500">

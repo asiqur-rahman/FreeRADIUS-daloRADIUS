@@ -27,6 +27,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./apps/api/prisma/seed.config.json:/app/apps/api/prisma/seed.config.json:ro
     expose:
       - "4000"
     healthcheck:

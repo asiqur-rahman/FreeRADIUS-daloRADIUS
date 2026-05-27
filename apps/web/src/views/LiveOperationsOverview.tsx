@@ -4,6 +4,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import type { OperationalAlert, OperationsOverview } from "@app/shared";
 import { getOperationsOverview } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
+import { PageHelp } from "../components/PageHelp";
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: string; icon: typeof Users; color: string }) {
   return (
@@ -63,7 +64,10 @@ export function LiveOperationsOverview() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Operations Overview</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Operations Overview</h2>
+            <PageHelp title="Operations Overview" description="Real-time RADIUS infrastructure health at a glance. Shows authentication success/reject trends, live session counts, NAS device health, certificate expiry warnings, and operational alerts — all auto-refreshed via server-sent events." tips={["Auth trend shows accept vs reject rates over the last 24 hours across all SSIDs", "Reject spikes trigger automatic alerts when they exceed the threshold set in Settings", "Certificate expiry warnings appear 30 days before the server cert expires — renew before the deadline to avoid authentication failures"]} />
+          </div>
           <p className="text-sm text-zinc-500 mt-0.5">Live RADIUS accounting, authentication, and certificate signals</p>
         </div>
         <button onClick={load} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm rounded-lg flex items-center gap-2">
