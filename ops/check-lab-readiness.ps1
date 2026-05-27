@@ -1,6 +1,6 @@
 param(
   [string]$ApiUrl = "http://localhost:4000",
-  [string]$WebUrl = "http://localhost:8080"
+  [string]$WebUrl = "http://localhost:8123"
 )
 
 $ErrorActionPreference = "Stop"

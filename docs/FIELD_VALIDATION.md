@@ -207,7 +207,7 @@ wsl.exe bash -lc "docker exec freeradius-api-1 wget -q -O - http://127.0.0.1:400
 Check web proxy health:
 
 ```powershell
-Invoke-WebRequest http://localhost:8080/web-health
+Invoke-WebRequest http://localhost:8123/web-health
 ```
 
 ## TP-Link-Specific Things To Confirm

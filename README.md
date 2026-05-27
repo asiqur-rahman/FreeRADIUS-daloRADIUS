@@ -59,7 +59,7 @@ pnpm lab:device-ca
 pnpm lab:check
 ```
 
-Open <http://localhost:8080>.
+Open <http://localhost:8123>.
 
 If you want to work on the API and web apps outside containers, use `pnpm docker:up` for Postgres and FreeRADIUS, then run `pnpm dev` separately.
 
