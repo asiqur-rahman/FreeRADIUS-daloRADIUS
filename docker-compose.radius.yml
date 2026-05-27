@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  RADIUS LAYER — FreeRADIUS 3.2.5
+#
+#  Start just this layer:   docker compose -f docker-compose.db.yml \
+#                                          -f docker-compose.radius.yml up -d
+#  Or let COMPOSE_FILE load all three files automatically (see .env).
+#
+#  FreeRADIUS talks to:
+#    • postgres  — SQL accounting (rlm_sql)
+#    • api       — authorize / post-auth hooks (rlm_rest)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  freeradius:
+    build:
+      context: ./infra/freeradius
+      dockerfile: Dockerfile
+    image: radius-platform/freeradius:production
+    container_name: radius-freeradius
+    restart: unless-stopped
+    # foreground mode — logs stream to `docker compose logs freeradius`.
+    # Change to ["radiusd", "-X"] temporarily for verbose debug output.
+    command: ["radiusd", "-f"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # PostgreSQL — for radacct / radpostauth SQL logging via rlm_sql.
+      RADIUS_DB_HOST:     postgres
+      RADIUS_DB_PORT:     5432
+      RADIUS_DB_NAME:     ${POSTGRES_DB:-radius}
+      RADIUS_DB_USER:     ${RADIUS_DB_USER:-radius_user}
+      RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-radius_user_dev_password}
+      # REST hook — rlm_rest calls the API container on the Docker bridge.
+      HOOK_HOST:   ${HOOK_HOST:-api}
+      HOOK_PORT:   ${HOOK_PORT:-4000}
+      HOOK_SECRET: ${HOOK_SECRET:-dev-hook-secret-change-in-prod}
+    ports:
+      - "1812:1812/udp"   # Authentication
+      - "1813:1813/udp"   # Accounting
+      - "3799:3799/udp"   # CoA (RFC 5176 Disconnect-Request)

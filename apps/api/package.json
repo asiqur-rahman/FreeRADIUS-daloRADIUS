@@ -14,7 +14,7 @@
     "prisma:status": "node ./node_modules/prisma/build/index.js migrate status",
     "prisma:deploy": "node ./node_modules/prisma/build/index.js migrate deploy",
     "prisma:studio": "node ./node_modules/prisma/build/index.js studio",
-    "seed": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node prisma/seed.mjs"
+    "seed": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node --openssl-legacy-provider prisma/seed.mjs"
   },
   "dependencies": {
     "@app/shared": "workspace:*",
