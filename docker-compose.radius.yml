@@ -37,6 +37,9 @@ services:
       HOOK_PORT:   ${HOOK_PORT:-4000}
       HOOK_SECRET: ${HOOK_SECRET:-dev-hook-secret-change-in-prod}
     ports:
-      - "1812:1812/udp"   # Authentication
-      - "1813:1813/udp"   # Accounting
-      - "3799:3799/udp"   # CoA (RFC 5176 Disconnect-Request)
+      - "${RADIUS_AUTH_PORT:-1812}:1812/udp"   # Authentication
+      - "${RADIUS_ACCT_PORT:-1813}:1813/udp"   # Accounting
+      # 3799 is FreeRADIUS's own CoA listener — not used by this platform.
+      # Per-NAS CoA ports are stored on each NAS record and the API sends
+      # Disconnect-Requests directly to the AP, not through FreeRADIUS.
+      - "3799:3799/udp"
