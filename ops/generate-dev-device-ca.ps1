@@ -1,12 +1,12 @@
 param(
   [string]$OutDir = ".\ops\dev-ca",
-  [string]$ApiEnvPath = ".\apps\api\.env",
+  [string]$RootEnvPath = ".\.env",
   [string]$CommonName = "RadiusOps Dev Device CA",
   [string]$Organization = "RadiusOps",
   [string]$OrganizationalUnit = "Managed WiFi",
   [int]$KeySize = 2048,
   [int]$ValidityYears = 5,
-  [switch]$SkipApiEnvUpdate,
+  [switch]$SkipRootEnvUpdate,
   [switch]$Force
 )
 
@@ -31,16 +31,6 @@ function Assert-WritableTarget {
   }
 }
 
-function Get-RelativePath {
-  param(
-    [string]$FromDirectory,
-    [string]$ToPath
-  )
-
-  $fromUri = [System.Uri]((Resolve-Path $FromDirectory).Path.TrimEnd("\") + "\")
-  $toUri = [System.Uri]((Resolve-Path $ToPath).Path)
-  return [System.Uri]::UnescapeDataString($fromUri.MakeRelativeUri($toUri).ToString()).Replace("/", "\")
-}
 
 function Set-EnvFileValue {
   param(
@@ -72,6 +62,41 @@ function Set-EnvFileValue {
   }
 
   [System.IO.File]::WriteAllLines($Path, $lines, [System.Text.Encoding]::UTF8)
+}
+
+# Replaces or appends a multi-line quoted PEM value in an .env file.
+# Handles the case where a previous PEM value spans multiple lines inside quotes.
+function Set-EnvFilePemValue {
+  param(
+    [string]$Path,
+    [string]$Key,
+    [string]$Pem    # raw PEM text (may contain newlines)
+  )
+
+  $quotedValue = "`"$Pem`""
+
+  if (-not (Test-Path $Path)) {
+    [System.IO.File]::WriteAllText($Path, "$Key=$quotedValue`n", [System.Text.Encoding]::UTF8)
+    return
+  }
+
+  $content = [System.IO.File]::ReadAllText($Path)
+
+  # Match KEY="..." potentially spanning multiple lines (non-greedy inside quotes)
+  $pattern = "(?m)^[ \t]*$([regex]::Escape($Key))=`"[\s\S]*?`""
+  if ($content -match $pattern) {
+    $content = [regex]::Replace($content, $pattern, "$Key=$quotedValue")
+  }
+  # Also match unquoted KEY=  (empty value on a single line)
+  elseif ($content -match "(?m)^[ \t]*$([regex]::Escape($Key))=[ \t]*$") {
+    $content = [regex]::Replace($content, "(?m)^[ \t]*$([regex]::Escape($Key))=[ \t]*$", "$Key=$quotedValue")
+  }
+  else {
+    if (-not $content.EndsWith("`n")) { $content += "`n" }
+    $content += "$Key=$quotedValue`n"
+  }
+
+  [System.IO.File]::WriteAllText($Path, $content, [System.Text.Encoding]::UTF8)
 }
 
 $resolvedOutDir = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $OutDir))
@@ -123,13 +148,12 @@ $keyPem = Convert-ToPem -Label "PRIVATE KEY" -Bytes $key.Key.Export([System.Secu
 [System.IO.File]::WriteAllText($certPath, $certificatePem, [System.Text.Encoding]::ASCII)
 [System.IO.File]::WriteAllText($keyPath, $keyPem, [System.Text.Encoding]::ASCII)
 
-$apiEnvCertPath = Get-RelativePath -FromDirectory ".\apps\api" -ToPath $certPath
-$apiEnvKeyPath = Get-RelativePath -FromDirectory ".\apps\api" -ToPath $keyPath
-
-if (-not $SkipApiEnvUpdate) {
-  $resolvedApiEnvPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $ApiEnvPath))
-  Set-EnvFileValue -Path $resolvedApiEnvPath -Key "DEVICE_CERT_CA_CERT_PATH" -Value $apiEnvCertPath
-  Set-EnvFileValue -Path $resolvedApiEnvPath -Key "DEVICE_CERT_CA_KEY_PATH" -Value $apiEnvKeyPath
+if (-not $SkipRootEnvUpdate) {
+  # Single root .env — used by both Docker and local pnpm dev (via --env-file=../../.env).
+  # PEM content is embedded inline so no file paths are needed anywhere.
+  $resolvedRootEnvPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $RootEnvPath))
+  Set-EnvFilePemValue -Path $resolvedRootEnvPath -Key "DEVICE_CERT_CA_CERT_PEM" -Pem $certificatePem
+  Set-EnvFilePemValue -Path $resolvedRootEnvPath -Key "DEVICE_CERT_CA_KEY_PEM"  -Pem $keyPem
 }
 
 Write-Host "Generated local device CA" -ForegroundColor Green
@@ -137,14 +161,13 @@ Write-Host ""
 Write-Host ("Certificate: {0}" -f $certPath)
 Write-Host ("Private key: {0}" -f $keyPath)
 Write-Host ""
-if ($SkipApiEnvUpdate) {
-  Write-Host "Add these lines to apps/api/.env for local dashboard-issued client certs:" -ForegroundColor Cyan
-} else {
-  Write-Host ("Updated {0} with local device-CA paths." -f ([System.IO.Path]::GetFullPath((Join-Path (Get-Location) $ApiEnvPath)))) -ForegroundColor Cyan
-  Write-Host "Current apps/api/.env values:" -ForegroundColor Cyan
+
+if (-not $SkipRootEnvUpdate) {
+  Write-Host "[OK] .env - updated with inline PEM (used by Docker and pnpm dev)" -ForegroundColor Cyan
+  Write-Host "    DEVICE_CERT_CA_CERT_PEM=`"<certificate>`""
+  Write-Host "    DEVICE_CERT_CA_KEY_PEM=`"<private key>`""
+  Write-Host ""
 }
-Write-Host ("DEVICE_CERT_CA_CERT_PATH={0}" -f $apiEnvCertPath)
-Write-Host ("DEVICE_CERT_CA_KEY_PATH={0}" -f $apiEnvKeyPath)
-Write-Host ""
+
 Write-Host "Then generate a test client cert with:" -ForegroundColor Cyan
 Write-Host ("pnpm lab:client-cert -- -CaCertPath `"{0}`" -CaKeyPath `"{1}`"" -f $certPath, $keyPath)

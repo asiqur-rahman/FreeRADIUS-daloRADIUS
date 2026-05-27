@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  RadiusNexus — Main Compose entry point
+#
+#  Includes all three service layers so a single command starts the full stack.
+#
+#  Start everything:      docker compose up -d
+#  Stop everything:       docker compose down
+#  Rebuild & restart:     docker compose up -d --build
+#
+#  Start one layer only (examples):
+#    docker compose -f docker-compose.db.yml up -d
+#    docker compose -f docker-compose.radius.yml up -d
+#    docker compose -f docker-compose.app.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+include:
+  - docker-compose.db.yml
+  - docker-compose.radius.yml
+  - docker-compose.app.yml

@@ -51,21 +51,22 @@ const schema = z.object({
   ALERT_NAS_SILENT_MINUTES: z.coerce.number().int().positive().default(15),
   ALERT_REJECT_THRESHOLD_5M: z.coerce.number().int().positive().default(20),
 
-  DEVICE_CERT_CA_CERT_PEM: z.string().optional(),
-  DEVICE_CERT_CA_KEY_PEM: z.string().optional(),
-  DEVICE_CERT_CA_CERT_PATH: z.string().optional(),
-  DEVICE_CERT_CA_KEY_PATH: z.string().optional(),
-  DEVICE_CERT_CA_KEY_PASSPHRASE: z.string().optional(),
+  // Empty string from env_file is treated as "not set" for all optional cert fields.
+  DEVICE_CERT_CA_CERT_PEM: z.string().transform(v => v.trim() || undefined).optional(),
+  DEVICE_CERT_CA_KEY_PEM: z.string().transform(v => v.trim() || undefined).optional(),
+  DEVICE_CERT_CA_CERT_PATH: z.string().transform(v => v.trim() || undefined).optional(),
+  DEVICE_CERT_CA_KEY_PATH: z.string().transform(v => v.trim() || undefined).optional(),
+  DEVICE_CERT_CA_KEY_PASSPHRASE: z.string().transform(v => v.trim() || undefined).optional(),
   DEVICE_CERT_VALIDITY_DAYS: z.coerce.number().int().min(1).max(397).default(365),
   DEVICE_CERT_SUBJECT_ORGANIZATION: z.string().default("RadiusOps"),
   DEVICE_CERT_SUBJECT_ORGANIZATIONAL_UNIT: z.string().default("Managed WiFi"),
   DEVICE_CERT_SUBJECT_COUNTRY: z
     .string()
-    .trim()
-    .length(2, "DEVICE_CERT_SUBJECT_COUNTRY must be a 2-letter ISO code")
+    .transform(v => v.trim() || undefined)
+    .pipe(z.string().length(2, "DEVICE_CERT_SUBJECT_COUNTRY must be a 2-letter ISO code").optional())
     .optional(),
-  DEVICE_CERT_SUBJECT_STATE: z.string().optional(),
-  DEVICE_CERT_SUBJECT_LOCALITY: z.string().optional(),
+  DEVICE_CERT_SUBJECT_STATE: z.string().transform(v => v.trim() || undefined).optional(),
+  DEVICE_CERT_SUBJECT_LOCALITY: z.string().transform(v => v.trim() || undefined).optional(),
 
   // ── FreeRADIUS rlm_rest hook ─────────────────────────────────────
   // Shared secret checked on every /radius/* request (X-Radius-Hook-Secret).

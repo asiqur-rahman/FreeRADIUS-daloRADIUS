@@ -26,8 +26,8 @@
     "lab:client-cert": "powershell -File .\\ops\\generate-test-client-cert.ps1",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f",
-    "docker:prod:up": "docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build"
+    "docker:build": "docker compose build",
+    "docker:logs": "docker compose logs -f"
   },
   "engines": {
     "node": ">=20",
