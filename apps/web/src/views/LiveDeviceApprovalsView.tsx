@@ -9,7 +9,6 @@ import {
   Search,
   ShieldCheck,
   Smartphone,
-  Trash2,
   UserRound,
   XCircle,
 } from "lucide-react";

@@ -4,15 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "dev": "node ./node_modules/tsx/dist/cli.mjs watch src/index.ts",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "lint": "eslint \"src/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "seed": "tsx prisma/seed.ts"
+    "lint": "node ./node_modules/eslint/bin/eslint.js \"src/**/*.ts\"",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "prisma:generate": "node ./node_modules/prisma/build/index.js generate",
+    "prisma:migrate": "node ./node_modules/prisma/build/index.js migrate dev",
+    "prisma:status": "node ./node_modules/prisma/build/index.js migrate status",
+    "prisma:deploy": "node ./node_modules/prisma/build/index.js migrate deploy",
+    "prisma:studio": "node ./node_modules/prisma/build/index.js studio",
+    "seed": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node prisma/seed.mjs"
   },
   "dependencies": {
     "@app/shared": "workspace:*",

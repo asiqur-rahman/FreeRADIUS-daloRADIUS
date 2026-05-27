@@ -10,6 +10,8 @@
 6. Sign in as the bootstrap administrator, enroll authenticator MFA, set `REQUIRE_ADMIN_MFA=true`, restart the API, and confirm administrator sign-in requires a code.
 7. Confirm `/health/ready`, portal login, a test RADIUS authentication, accounting arrival, and CoA against a test session.
 
+For lab acceptance against a real AP and supplicant, follow [`FIELD_VALIDATION.md`](./FIELD_VALIDATION.md).
+
 Production FreeRADIUS uses the upstream EAP module with this repository's SQL and site overlays. Install the deployment's EAP server certificate in FreeRADIUS and record the active PEM certificate through the admin certificate inventory so expiry alerts operate.
 
 ## Backups

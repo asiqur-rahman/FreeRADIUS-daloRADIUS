@@ -33,6 +33,7 @@ infra/freeradius/raddb/certs/server.*
 infra/freeradius/raddb/certs/ca.*
 infra/freeradius/raddb/certs/dh
 infra/freeradius/raddb/certs/random
+ops/dev-ca/
 
 # build artifacts
 *.tsbuildinfo

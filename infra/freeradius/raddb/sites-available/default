@@ -1,17 +1,20 @@
-# ─────────────────────────────────────────────────────────────────────
-#  default virtual server — handles outer EAP, accounting, post-auth.
 #
-#  Trimmed-down version of the upstream default. The platform-specific
-#  bits live in inner-tunnel (PEAP inner method) and in the SQL queries
-#  that read radcheck/radreply.
-# ─────────────────────────────────────────────────────────────────────
+# Default virtual server for outer EAP, accounting, and post-auth hooks.
+# This stays intentionally close to the upstream FreeRADIUS layout so the
+# parser behavior is predictable while the app-specific logic lives in the
+# SQL and REST modules plus inner-tunnel.
+#
 server default {
 
     listen {
         type = auth
         ipaddr = *
         port = 0
-        limit { max_connections = 16  lifetime = 0  idle_timeout = 30 }
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
     }
 
     listen {
@@ -25,18 +28,22 @@ server default {
         ipaddr = *
         port = 0
         proto = tcp
-        limit { max_connections = 16  lifetime = 0  idle_timeout = 30 }
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
     }
 
     authorize {
         filter_username
         preprocess
         suffix
+
         eap {
             ok = return
         }
-        # SQL lookup for users with no EAP wrapper (rare — PEAP/EAP-TLS
-        # handle the real auth in the inner-tunnel server).
+
         sql
         expiration
         logintime
@@ -44,13 +51,27 @@ server default {
     }
 
     authenticate {
-        Auth-Type PAP   { pap }
-        Auth-Type CHAP  { chap }
-        Auth-Type MS-CHAP { mschap }
+        Auth-Type PAP {
+            pap
+        }
+
+        Auth-Type CHAP {
+            chap
+        }
+
+        Auth-Type MS-CHAP {
+            mschap
+        }
+
+        mschap
         eap
     }
 
-    preacct { preprocess  acct_unique  suffix }
+    preacct {
+        preprocess
+        acct_unique
+        suffix
+    }
 
     accounting {
         detail
@@ -59,12 +80,15 @@ server default {
         attr_filter.accounting_response
     }
 
-    session { sql }
+    session {
+        sql
+    }
 
     post-auth {
         update {
             &reply: += &session-state:
         }
+
         sql
         exec
 
@@ -75,6 +99,10 @@ server default {
         }
     }
 
-    pre-proxy { }
-    post-proxy { eap }
+    pre-proxy {
+    }
+
+    post-proxy {
+        eap
+    }
 }

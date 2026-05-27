@@ -1,3 +1,4 @@
+import "./loadAppEnv.js";
 // Entry point: build the server and listen.
 import { buildServer } from "./server.js";
 import { config } from "./config.js";

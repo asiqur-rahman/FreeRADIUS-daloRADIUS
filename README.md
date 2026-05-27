@@ -39,18 +39,27 @@ pnpm install
 # 2. Copy env
 cp .env.example .env
 
-# 3. Bring up Postgres + Redis + FreeRADIUS
-pnpm docker:up
+# 3. Bring up the full lab stack
+pnpm docker:prod:up
 
 # 4. Run Prisma migrations + seed
 pnpm db:migrate
+pnpm db:generate
 pnpm db:seed
 
-# 5. Start API + web in dev mode
-pnpm dev
+# 5. Print the router and lab config you will use
+pnpm lab:config
+
+# 6. Optional: generate a local EAP-TLS device CA for lab testing
+pnpm lab:device-ca
+
+# 7. Check lab readiness before configuring the AP
+pnpm lab:check
 ```
 
-Open <http://localhost:5173>.
+Open <http://localhost:8080>.
+
+If you want to work on the API and web apps outside containers, use `pnpm docker:up` for Postgres, Redis, and FreeRADIUS, then run `pnpm dev` separately.
 
 Default seeded admin: `admin` / `admin1234!` - change immediately. In deployments, set `SEED_ADMIN_PASSWORD` before the first seed.
 
@@ -100,3 +109,5 @@ Default seeded admin: `admin` / `admin1234!` - change immediately. In deployment
 - [x] Backup/restore tooling, readiness verification, operations runbook, and service objectives
 
 Deployment acceptance remains environment-specific: validate CoA acknowledgement time against the production NAS/WLC, install and inventory the production EAP certificate, and conduct a database restore drill. See [`docs/OPERATIONS.md`](./docs/OPERATIONS.md).
+
+For router-and-supplicant validation, use [`docs/FIELD_VALIDATION.md`](./docs/FIELD_VALIDATION.md). `pnpm lab:config` prints the exact RADIUS ports, VLAN defaults, and seed credentials to use during the first AP test, and `pnpm lab:device-ca` / `pnpm lab:client-cert` bootstrap a local EAP-TLS lab without outside PKI.

@@ -1,242 +1,159 @@
-# WPA Enterprise Approval System — Project Planning
+# WPA Enterprise Approval — Status & Next Steps
 
-## Current Status
+This file tracks the **FreeRADIUS REST approval workflow** (PEAP device onboarding, Telegram/dashboard decisions, EAP-TLS managed certs). It is separate from the platform delivery phases in [`docs/DEVELOPMENT_PHASES.md`](./docs/DEVELOPMENT_PHASES.md) and [`README.md`](./README.md#phase-status), where Phases 1–6 (foundation through productionization) are already delivered in the repository.
 
-### Architecture (decided)
+---
+
+## Architecture
 
 ```
 Device (phone / laptop)
-  │  PEAP-MSCHAPv2  (802.1X)
+  │  PEAP-MSCHAPv2  or  EAP-TLS  (802.1X)
   ▼
-TP-Link AP
+TP-Link AP (or other NAS)
   │  RADIUS UDP 1812
   ▼
-FreeRADIUS 3.2.5  (Docker)
-  │  rlm_rest HTTP  →  POST /api/v1/radius/authorize
-  │                    POST /api/v1/radius/post-auth
+FreeRADIUS 3.2.5  (Docker — infra/freeradius/)
+  │  rlm_rest HTTP
+  │    POST /api/v1/radius/authorize   (inner-tunnel PEAP + check-eap-tls)
+  │    POST /api/v1/radius/post-auth     (learn MAC, trigger approval)
   ▼
 apps/api  (Fastify + Prisma)
   │
-  ├── Postgres   users, devices, approvals, VLAN policies
+  ├── Postgres   users, devices, approvals, groups, radacct, nas_clients
   ├── Redis      sessions, rate limits
-  └── Telegram   inline-keyboard approval bot
+  └── Telegram   inline-keyboard approval bot (optional)
 ```
 
 ---
 
-## What Is Already Built
+## What Is Done (code)
 
-### Infrastructure
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| FreeRADIUS Docker image | ✅ Config written | `infra/freeradius/` — needs `docker compose build` |
-| `rlm_rest` module | ✅ Written | `infra/freeradius/raddb/mods-available/rest` |
-| `inner-tunnel` virtual server | ✅ Rewritten | Uses REST hook instead of direct SQL for auth |
-| `docker-compose.yml` | ✅ Updated | FreeRADIUS no longer behind a profile; `HOOK_HOST/PORT/SECRET` wired |
-| Postgres + Redis | ✅ Already running | Via `docker compose up -d` |
-
-### Database (Prisma)
-
-| Model / Change | Status | Notes |
-|----------------|--------|-------|
-| `DeviceStatus` enum (`pending/approved/rejected`) | ✅ Schema written | Migration not yet run |
-| `UserDevice.status` field | ✅ Schema written | Default: `pending` |
-| `DeviceApproval` model | ✅ Schema written | Audit trail per decision |
-| `User.approvalDecisions` relation | ✅ Schema written | Links admin to decisions |
-| `AuditAction.device_approve/reject` | ✅ Schema written | For future audit log entries |
-| **Prisma migration** | ❌ Not run yet | Run `pnpm prisma:migrate` |
-
-### API (`apps/api`)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| `POST /api/v1/radius/authorize` | ✅ Written | Returns `NT-Password` + VLAN assignment |
-| `POST /api/v1/radius/post-auth` | ✅ Written | Registers new devices, fires Telegram |
-| Shared-secret guard (`X-Radius-Hook-Secret`) | ✅ Written | Rejects requests without the header |
-| `RADIUS_HOOK_SECRET` config | ✅ Written | In `config.ts` + `.env` |
-| `QUARANTINE_VLAN_ID` / `NORMAL_VLAN_ID` config | ✅ Written | Defaults: 99 / 10 |
-| Telegram bot polling | ✅ Written | `src/lib/telegram.ts` — starts on `pnpm dev` |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ADMIN_CHAT_ID` config | ✅ Written | Commented out in `.env` — needs real values |
-
-### Removed
-
-| What | Why |
-|------|-----|
-| `apps/radius/` | Entire custom TypeScript RADIUS server deleted — replaced by FreeRADIUS |
+| Area | Status | Where |
+|------|--------|--------|
+| FreeRADIUS `rlm_rest` + `inner-tunnel` | Done | `infra/freeradius/raddb/mods-available/rest`, `sites-available/inner-tunnel` |
+| EAP-TLS policy gate | Done | `infra/freeradius/raddb/sites-available/check-eap-tls` → same `/authorize` hook |
+| RADIUS authorize (PEAP + EAP-TLS) | Done | `apps/api/src/routes/radius.ts` |
+| RADIUS post-auth (learn device, notify) | Done | `apps/api/src/routes/radius.ts` |
+| Shared-secret guard | Done | `X-Radius-Hook-Secret` in `apps/api/src/config.ts` |
+| Per-group VLAN reply attributes | Done | `replyFromGroups()` in `radius.ts`; group UI in `apps/web` |
+| Device approve/reject (shared service) | Done | `apps/api/src/services/deviceApprovals.ts` |
+| Telegram bot | Done | `apps/api/src/lib/telegram.ts` |
+| Admin device approvals UI | Done | `apps/web/src/views/LiveDeviceApprovalsView.tsx` |
+| Managed client cert bind / issue | Done | `apps/api/src/services/deviceCertificates.ts`, admin cert routes |
+| Session disconnect after approval | Done | `disconnectUserSessions()` from `deviceApprovals.ts` (Disconnect-Request, not CoA vlan push) |
+| CoA disconnect infrastructure | Done (platform) | `apps/api/src/services/coa.ts`, `sessions.ts` — used elsewhere; approval path uses disconnect |
+| Prisma models (`DeviceStatus`, `DeviceApproval`, `certFingerprint`, audit enums) | In schema | `apps/api/prisma/schema.prisma` |
+| Custom `apps/radius/` TS server | Removed | Replaced by FreeRADIUS |
 
 ---
 
-## Recent Update
+## What Is Not Done Yet
 
-Since this planning file was first written, the codebase has moved forward in two important ways:
+### 1. Database migration
 
-- Telegram approval and rejection now go through a shared device-decision service that updates the device status, writes audit logs, and disconnects active device sessions so the AP can reauthenticate with the new policy.
-- The Phase 3 backend API is now in place with `GET /api/v1/admin/devices`, `PATCH /api/v1/admin/devices/:id`, `GET /api/v1/admin/approvals`, and `GET /api/v1/admin/users/:id/devices`.
-- The Phase 3 admin UI now has a live Device Approvals workspace in `apps/web`, with a pending queue, full device inventory, approval history, and per-user device inspection backed by those APIs.
-- Phase 4 per-group VLAN policy is now live: approved devices inherit group reply attributes from the REST authorize hook, with VLAN editing exposed in the Groups UI.
-- Phase 5 is now wired in code: FreeRADIUS has a `check-eap-tls` hook into `/api/v1/radius/authorize`, the admin dashboard can bind or issue managed client certificates per device, and `UserDevice.certFingerprint` is now the EAP-TLS device identity digest.
+The approval workflow migration is now checked in as:
 
-The remaining work for Phase 2 is now mostly AP verification: confirm how the TP-Link firmware behaves with Disconnect/CoA and decide whether Disconnect-Request is enough or whether a true CoA-Request variant is needed.
+```text
+apps/api/prisma/migrations/20260527090000_device_approval_workflow/
+```
 
-## What Is NOT Done Yet
+It adds:
 
-### Immediate (must do before first test)
+- `DeviceStatus`
+- `user_devices.status`
+- `device_approvals`
+- `device_approve` / `device_reject` audit enum values
 
-- [ ] **Revoke the leaked Telegram bot token**
-  - Go to Telegram → @BotFather → `/mybots` → select bot → API Token → Revoke
-  - Generate a new token, put it in `apps/api/.env`
+It also backfills pre-existing `user_devices` rows to `approved` so older installs keep their prior behavior instead of suddenly dropping known devices into quarantine.
 
-- [ ] **Get your Telegram admin chat ID**
-  - Message `@userinfobot` on Telegram — it replies with your chat ID
-  - Add to `apps/api/.env` as `TELEGRAM_ADMIN_CHAT_ID`
+Before first end-to-end test on a clean database:
 
-- [ ] **Run Prisma migration**
-  ```bash
-  cd apps/api
-  pnpm prisma:migrate        # name: "device-approval-workflow"
-  pnpm prisma:generate
-  ```
+```bash
+pnpm db:migrate
+pnpm db:generate
+pnpm db:status
+```
 
-- [ ] **Build and start FreeRADIUS**
-  ```bash
-  docker compose build freeradius
-  docker compose up -d
-  ```
+### 2. Environment & stack (one-time per machine)
 
-- [ ] **Add AP as a NAS client**
-  - Insert a row into `nas_clients` table for your TP-Link AP IP
-  - The AP's IP + shared secret must match what's configured on the AP
+| Step | Notes |
+|------|--------|
+| Copy / fill `.env` | `RADIUS_HOOK_SECRET`, VLAN IDs, DB URL — see `.env.example` |
+| Telegram (optional) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` in API env; revoke any leaked token first |
+| `pnpm docker:up` | Postgres, Redis, FreeRADIUS |
+| `pnpm db:migrate` + `pnpm db:seed` | After migration above exists |
+| `pnpm lab:check` | Validates env, Docker, migrations, health endpoints, NAS rows, and PEAP prerequisites |
+| `pnpm lab:config` | Prints the AP/RADIUS values, VLAN defaults, and seed credentials for the first field test |
+| `pnpm lab:device-ca` | Generates a local EAP-TLS device CA and prints the `apps/api/.env` lines needed for local cert issuance |
+| `pnpm lab:client-cert -- -CommonName <name>` | Generates a test client cert/PFX for import-based EAP-TLS validation |
+| NAS client row | TP-Link AP IP + shared secret in `nas_clients` (admin UI or seed) |
+| AP config | RADIUS IP/port/secret; enable 802.1X + PEAP (and EAP-TLS when testing certs) |
 
-- [ ] **Seed a test user** with `ntHash`
-  - The `authorize` endpoint reads `user_secrets.ntHash` (16-byte MD4 hex)
-  - Make sure at least one user has this populated
-  - Run `pnpm db:seed` or insert manually via Prisma Studio (`pnpm prisma:studio`)
+`pnpm db:seed` now creates a dedicated PEAP lab user by default:
 
-- [ ] **Configure PEAP on your TP-Link AP**
-  - RADIUS server IP: your machine's IP (or Docker host IP)
-  - RADIUS port: 1812
-  - Shared secret: must match the `nas_clients` row
+- `wifi-test` / `wifi12345!`
 
----
+It can also seed a NAS row if you set `SEED_LAB_NAS_IP` and optionally `SEED_LAB_NAS_SECRET`.
 
-### Phase 2 — CoA (Change of Authorization)
+### 3. Field validation (proves it in the building)
 
-When an admin approves a device via Telegram, the device is still on the quarantine VLAN.
-Currently the user must **reconnect** to get the normal VLAN.
+These are **deployment acceptance** items, not missing application code:
 
-To fix this:
-- After approval, send a **CoA-Request** (RFC 3576) to the AP
-- The AP re-runs authentication and assigns the normal VLAN
-- The device switches VLANs without disconnecting
+- [ ] **PEAP onboarding** — unknown phone connects → quarantine VLAN → Telegram or dashboard notification → approve → disconnect/reconnect → normal VLAN from group policy
+- [ ] **CoA disconnect on TP-Link** — confirm the AP ACKs Disconnect-Request within your SLO (~2s); see [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)
+- [ ] **EAP-TLS** — trusted client CA on AP/supplicant, cert bound or issued in admin UI, successful auth via `check-eap-tls`, correct VLAN
+- [ ] **Accounting** — `radacct` rows and live sessions view update after auth
 
-**What needs to be built:**
-- [ ] Extend `src/lib/telegram.ts` `handleCallback()` — after approving, look up the active session from `radacct` (session ID + NAS IP) and call the existing `sendCoARequest` service
-- [ ] Add `radacct` session lookup to `apps/api/src/services/sessions.ts`
-- [ ] Verify TP-Link AP supports CoA (RFC 3576) — some firmware requires enabling it separately
+### 4. Optional enhancements (not required to call the feature “shipped”)
+
+| Item | Why optional |
+|------|----------------|
+| **CoA-Request for VLAN change without full disconnect** | Today, approval triggers Disconnect-Request; client re-authenticates for new VLAN. True RFC 3576 CoA-Request for dynamic VLAN is not wired in the approval path. |
+| **Production TLS for RADIUS** | Bootstrap certs in Docker; replace for production per operations guide. |
 
 ---
 
-### Phase 3 — Admin Dashboard (Web UI)
-
-The `apps/web` React app needs new pages:
-
-| Page | What it shows |
-|------|---------------|
-| `/devices` | All devices — pending / approved / rejected — with Approve/Reject buttons |
-| `/devices/pending` | Just the pending queue, sorted by `requestedAt` |
-| `/audit` | `DeviceApproval` history — who decided what and when |
-| `/users/:id/devices` | Devices for a specific user |
-
-**API endpoints needed in `apps/api`:**
-- [ ] `GET /api/v1/admin/devices` — list devices with filters (`status`, `userId`, `search`)
-- [ ] `PATCH /api/v1/admin/devices/:id` — approve or reject (updates `UserDevice.status`, creates `DeviceApproval`)
-- [ ] `GET /api/v1/admin/approvals` — approval audit log
-
----
-
-### Phase 4 — VLAN Policy per Group
-
-Right now every approved user gets the same `NORMAL_VLAN_ID`.
-For per-department or per-role VLANs:
-
-- [ ] Add `vlanId` to `Group` (or use the existing `GroupAttribute` with `Tunnel-Private-Group-ID`)
-- [ ] Update `/authorize` to check the user's group membership and return the correct VLAN
-- [ ] UI: VLAN assignment on the Group edit page
-
----
-
-### Phase 5 — EAP-TLS (Managed Devices)
-
-For company-owned laptops / MDM-enrolled devices:
-
-- [x] Enable `EAP-TLS` in FreeRADIUS `eap` module config
-- [x] Add client certificate binding + managed issuance workflow in the admin dashboard
-- [x] Use `UserDevice.certFingerprint` as the EAP-TLS device identity digest
-- [x] Update `/authorize` to return policy for a presented client cert via `check-eap-tls`
-- [ ] Live-verify EAP-TLS against your AP and a supplicant with a trusted client CA
-
----
-
-### Phase 6 — Production Hardening
-
-Before deploying to a real office:
-
-- [ ] Replace FreeRADIUS bootstrap self-signed cert with a proper CA cert
-- [ ] Set `RADIUS_HOOK_SECRET` to a strong random value (≥ 32 chars) in production `.env`
-- [ ] Set `HOOK_SECRET` in `docker-compose.production.yml`
-- [ ] Enable HTTPS on `apps/api` (or put it behind nginx/Caddy)
-- [ ] Use per-NAS secrets (≥ 32 chars) for every AP
-- [ ] Set up log rotation for `radacct` / `radpostauth` tables
-- [ ] Configure Redis with a password
-- [ ] Add Postgres backups
-
----
-
-## Next Action (ordered)
+## Suggested order of work (from here)
 
 ```
-1.  Revoke leaked Telegram token  →  get new token + chat ID
-2.  pnpm prisma:migrate            →  apply schema changes
-3.  docker compose build && up     →  FreeRADIUS running
-4.  Insert NAS row for TP-Link AP  →  AP can send to RADIUS
-5.  Seed one test user with ntHash →  authorize endpoint has data
-6.  Connect test phone             →  see Telegram notification
-7.  Tap Approve                    →  device status → approved
-8.  Reconnect phone                →  gets NORMAL_VLAN (10)
+1.  pnpm db:migrate && pnpm db:generate              (schema and client aligned)
+2.  pnpm docker:up && pnpm db:seed                   (stack + test user + NAS)
+3.  pnpm lab:check                                   (catch blockers before AP work)
+4.  pnpm lab:config -- -ServerIp <lan-ip>            (print exact router/test values)
+5.  Follow docs/FIELD_VALIDATION.md for PEAP         (closes onboarding loop)
+6.  pnpm lab:device-ca                               (bootstraps local EAP-TLS CA)
+7.  pnpm lab:client-cert -- -CommonName <name>       (creates a test cert/PFX)
+8.  Import/bind client cert → EAP-TLS on same AP     (closes Phase 5 field gate)
+9.  Log TP-Link Disconnect-ACK behavior              (closes CoA acceptance)
 ```
 
 ---
 
-## File Map
+## File map (approval + EAP-TLS)
 
 ```
-D:/RnD/Freeradius/
-├── apps/
-│   ├── api/                         ← Fastify + Prisma backend
-│   │   ├── prisma/schema.prisma     ← DeviceApproval, DeviceStatus added
-│   │   ├── src/
-│   │   │   ├── config.ts            ← RADIUS_HOOK_SECRET, VLAN IDs, Telegram
-│   │   │   ├── index.ts             ← starts Telegram polling on boot
-│   │   │   ├── lib/telegram.ts      ← bot + approval flow  ← NEW
-│   │   │   ├── routes/radius.ts     ← /authorize + /post-auth  ← NEW
-│   │   │   └── server.ts            ← registers radius routes
-│   │   └── .env                     ← add TELEGRAM_* values here
-│   │
-│   └── web/                         ← React admin UI (dashboard pending)
-│
-├── infra/
-│   └── freeradius/
-│       ├── Dockerfile               ← copies rest module + inner-tunnel
-│       └── raddb/
-│           ├── clients.conf         ← add AP entry here (or via DB)
-│           ├── mods-available/
-│           │   ├── sql              ← existing (accounting)
-│           │   └── rest             ← NEW (user auth + post-auth)
-│           └── sites-available/
-│               ├── default          ← outer PEAP server (unchanged)
-│               └── inner-tunnel     ← REWRITTEN (REST-based auth)
-│
-├── docker-compose.yml               ← FreeRADIUS always on, HOOK_* env added
-└── PLANNING.md                      ← this file
+apps/api/
+  prisma/schema.prisma              DeviceStatus, DeviceApproval, certFingerprint
+  src/routes/radius.ts              /authorize, /post-auth
+  src/services/deviceApprovals.ts   approve/reject + disconnect
+  src/services/deviceCertificates.ts bind / issue / clear certs
+  src/lib/telegram.ts               polling + inline keyboard
+  src/lib/clientCertificates.ts     PEM parse + fingerprint for EAP-TLS identity
+
+apps/web/
+  src/views/LiveDeviceApprovalsView.tsx   pending queue, inventory, history, certs
+
+infra/freeradius/raddb/
+  mods-available/rest
+  sites-available/inner-tunnel
+  sites-available/check-eap-tls
 ```
+
+---
+
+## Related docs
+
+- Platform phases (complete in repo): [`docs/DEVELOPMENT_PHASES.md`](./docs/DEVELOPMENT_PHASES.md)
+- Deploy, CoA SLO, backups: [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)
+- Quick start: [`README.md`](./README.md)

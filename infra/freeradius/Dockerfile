@@ -26,6 +26,7 @@ in_tls && /^[[:space:]]*virtual_server[[:space:]]*=/ { inserted = 1 } \
 in_tls && /^[[:space:]]*}/ { if (!inserted) print "\tvirtual_server = \"check-eap-tls\""; in_tls = 0 } \
 { print }' /etc/raddb/mods-available/eap > /tmp/eap \
  && mv /tmp/eap /etc/raddb/mods-available/eap \
+ && chmod -R go-w /etc/raddb \
  && ln -sf /etc/raddb/mods-available/sql           /etc/raddb/mods-enabled/sql \
  && ln -sf /etc/raddb/mods-available/rest          /etc/raddb/mods-enabled/rest \
  && ln -sf /etc/raddb/sites-available/default      /etc/raddb/sites-enabled/default \

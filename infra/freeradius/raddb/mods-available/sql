@@ -25,6 +25,7 @@ sql {
     groupcheck_table = "radgroupcheck"
     groupreply_table = "radgroupreply"
     usergroup_table  = "radusergroup"
+    group_attribute  = "SQL-Group"
 
     # Read NAS clients from the `nas` table (UI-managed). Without
     # read_clients, FreeRADIUS only sees clients.conf entries.
