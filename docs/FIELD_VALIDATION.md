@@ -8,7 +8,7 @@ Use this layout for the first real test:
 
 ```text
 Server machine
-  - Runs Docker, Postgres, Redis, FreeRADIUS, and the API
+  - Runs Docker, Postgres, FreeRADIUS, and the API
   - Connected to the router by Ethernet if possible
 
 Router / AP

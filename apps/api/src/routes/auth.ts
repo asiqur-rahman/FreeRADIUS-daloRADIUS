@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────
 //  Authentication routes — login, refresh, logout, /me.
 //
-//  Phase-1 simplification: refresh tokens are signed JWTs with the
-//  same secret as access tokens; logout is best-effort (clears cookie
-//  + records audit). Phase-5 will add Redis-backed revocation.
+//  Refresh tokens are signed JWTs with the same secret as access tokens;
+//  logout is best-effort (clears cookie + records audit).
 // ─────────────────────────────────────────────────────────────────────
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

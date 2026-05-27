@@ -24,7 +24,6 @@ FreeRADIUS 3.2.5  (Docker — infra/freeradius/)
 apps/api  (Fastify + Prisma)
   │
   ├── Postgres   users, devices, approvals, groups, radacct, nas_clients
-  ├── Redis      sessions, rate limits
   └── Telegram   inline-keyboard approval bot (optional)
 ```
 
@@ -92,7 +91,7 @@ pnpm db:status
 |------|--------|
 | Copy / fill `.env` | `RADIUS_HOOK_SECRET`, VLAN IDs, DB URL — see `.env.example` |
 | Telegram (optional) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` in API env; revoke any leaked token first |
-| `pnpm docker:up` | Postgres, Redis, FreeRADIUS |
+| `pnpm docker:up` | Postgres, FreeRADIUS |
 | `pnpm db:migrate` + `pnpm db:seed` | After migration above exists |
 | `pnpm lab:check` | Validates env, Docker, migrations, health endpoints, NAS rows, and PEAP prerequisites |
 | `pnpm lab:config` | Prints the AP/RADIUS values, VLAN defaults, and seed credentials for the first field test |

@@ -517,7 +517,7 @@ if ($dockerVersion) {
 }
 
 $runningServices = Get-ComposeRunningServices
-foreach ($service in @("postgres", "redis", "freeradius")) {
+foreach ($service in @("postgres", "freeradius")) {
   if ($runningServices -contains $service) {
     Write-Check PASS "docker:$service" "running"
   } else {

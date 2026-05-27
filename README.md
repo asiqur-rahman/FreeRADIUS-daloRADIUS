@@ -13,7 +13,7 @@ See [`RADIUS_Platform_Architecture.docx`](./RADIUS_Platform_Architecture.docx) f
 | Web | React 18 + Vite + Tailwind |
 | API | Node 20 + TypeScript + Fastify 5 + Prisma 5 + Zod |
 | Auth | FreeRADIUS 3.2 (PEAP-MSCHAPv2, EAP-TLS) |
-| Data | PostgreSQL 16, Redis 7 |
+| Data | PostgreSQL 16 |
 | Dev | Docker Compose, pnpm workspaces |
 
 ## Repo layout
@@ -61,7 +61,7 @@ pnpm lab:check
 
 Open <http://localhost:8080>.
 
-If you want to work on the API and web apps outside containers, use `pnpm docker:up` for Postgres, Redis, and FreeRADIUS, then run `pnpm dev` separately.
+If you want to work on the API and web apps outside containers, use `pnpm docker:up` for Postgres and FreeRADIUS, then run `pnpm dev` separately.
 
 Default seeded admin: `admin` / `admin1234!` - change immediately. In deployments, set `SEED_ADMIN_PASSWORD` before the first seed.
 
@@ -70,7 +70,7 @@ Default seeded admin: `admin` / `admin1234!` - change immediately. In deployment
 **Phase 1 (Foundation)** — complete & verified.
 
 - [x] Monorepo + workspace; typecheck clean across `apps/api`, `apps/web`, `packages/shared`
-- [x] Docker Compose dev stack (Postgres, Redis, FreeRADIUS via Dockerfile overlay)
+- [x] Docker Compose dev stack (Postgres, FreeRADIUS via Dockerfile overlay)
 - [x] Prisma schema, seed bootstrap admin
 - [x] Fastify API with JWT auth + RBAC, refresh-cookie rotation
 - [x] RadiusPolicyService — single writer of radcheck/radreply/radgroup\*/radusergroup/nas

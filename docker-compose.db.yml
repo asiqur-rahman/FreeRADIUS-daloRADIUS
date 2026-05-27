@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  DATA LAYER — PostgreSQL + Redis
+#  DATA LAYER — PostgreSQL
 #
 #  Start just this layer:   docker compose -f docker-compose.db.yml up -d
 #  Or let COMPOSE_FILE load all three files automatically (see .env).
@@ -35,22 +35,5 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Redis ──────────────────────────────────────────────────────────────────
-  # Used for JWT session store, rate-limit counters, and job queues.
-  redis:
-    image: redis:7-alpine
-    container_name: radius-redis
-    restart: unless-stopped
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
 volumes:
   postgres_data:
-  redis_data:

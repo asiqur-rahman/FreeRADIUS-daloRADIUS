@@ -3,7 +3,7 @@
 ## Deployment
 
 1. Populate `.env` with production secrets, public `CORS_ORIGINS`, `COOKIE_SECURE=true`, and a unique `MFA_ENCRYPTION_KEY`. Keep `REQUIRE_ADMIN_MFA=false` only for initial bootstrap.
-2. Start infrastructure: `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d postgres redis freeradius`.
+2. Start infrastructure: `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d postgres freeradius`.
 3. Install dependencies and apply application migrations: `pnpm install --frozen-lockfile` then `pnpm db:deploy`.
 4. Seed only for a new installation: set `SEED_ADMIN_PASSWORD` to a strong temporary value, then run `pnpm db:seed`.
 5. Start the API and web containers: `pnpm docker:prod:up`.

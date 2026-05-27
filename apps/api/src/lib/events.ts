@@ -7,7 +7,6 @@
 //
 //  Using a plain Node.js EventEmitter keeps the dependency footprint
 //  minimal and is perfectly sufficient for a single-process deployment.
-//  If you ever go multi-process, swap this for a Redis Pub/Sub adapter.
 // ─────────────────────────────────────────────────────────────────────
 
 import { EventEmitter } from "node:events";
