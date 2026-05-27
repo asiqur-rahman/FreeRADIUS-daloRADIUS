@@ -20,6 +20,8 @@ import {
   summarizePresentedCertificate,
   type ClientCertificateSummary,
 } from "../lib/clientCertificates.js";
+import { emitPlatformEvent } from "../lib/events.js";
+import { isIpAllowed } from "../lib/ipGuard.js";
 import { normalizeMac } from "../lib/mac.js";
 import { sendApprovalRequest } from "../lib/telegram.js";
 
@@ -357,11 +359,23 @@ async function authorizeEapTls(
 
 const radiusRoutes: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", async (req, reply) => {
-    const expected = config().RADIUS_HOOK_SECRET;
+    const c = config();
+
+    // 1. Shared-secret check (always)
+    const expected = c.RADIUS_HOOK_SECRET;
     const received = req.headers["x-radius-hook-secret"];
     if (!received || received !== expected) {
-      req.log.warn({ ip: req.ip }, "radius.hook unauthorized");
+      req.log.warn({ ip: req.ip }, "radius.hook unauthorized — bad secret");
       return reply.status(401).send({ error: "Unauthorized" });
+    }
+
+    // 2. IP allowlist check (only when enabled)
+    if (c.RADIUS_IP_GUARD_ENABLED) {
+      const allowed = await isIpAllowed(req.ip);
+      if (!allowed) {
+        req.log.warn({ ip: req.ip }, "radius.hook unauthorized — IP not in allowlist");
+        return reply.status(403).send({ error: "Forbidden" });
+      }
     }
   });
 
@@ -417,6 +431,16 @@ const radiusRoutes: FastifyPluginAsync = async (app) => {
         nasIp,
       }).catch((err) => {
         req.log.error({ err, deviceId: device.id }, "telegram.send_approval_request failed");
+      });
+
+      // Notify SSE subscribers so the admin dashboard reloads immediately
+      emitPlatformEvent("device.pending", {
+        deviceId: device.id,
+        username: user.username,
+        fullName: user.fullName,
+        mac: normalizedMac,
+        nasIp,
+        isNew: true,
       });
     }
 

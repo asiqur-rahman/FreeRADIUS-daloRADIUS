@@ -2,6 +2,7 @@ import type { DeviceStatus } from "@prisma/client";
 import type { FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
 import { audit } from "../lib/audit.js";
+import { emitPlatformEvent } from "../lib/events.js";
 import { NotFound } from "../lib/errors.js";
 import { disconnectUserSessions } from "./sessions.js";
 
@@ -159,6 +160,15 @@ export async function decideDevice(opts: DecideDeviceOptions): Promise<DeviceDec
       req: opts.req,
     });
   }
+
+  // Notify SSE subscribers so admin dashboards update immediately
+  emitPlatformEvent("device.decided", {
+    deviceId: outcome.device.id,
+    username: outcome.device.user.username,
+    mac: outcome.device.mac,
+    status: opts.status,
+    source: opts.source,
+  });
 
   return {
     device: outcome.device,

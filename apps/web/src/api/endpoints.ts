@@ -215,6 +215,35 @@ export function listAuthenticationEvents(token: string, pageSize = 50) {
   return api<Paginated<AuthenticationEvent>>(`${v1}/admin/auth-events?pageSize=${pageSize}`, { token });
 }
 
+// -- RADIUS IP allowlist -----------------------------------------------------
+export interface RadiusAllowedIp {
+  id: string;
+  cidr: string;
+  label: string | null;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export function listRadiusAllowlist(token: string) {
+  return api<RadiusAllowedIp[]>(`${v1}/admin/radius-allowlist`, { token });
+}
+export function createRadiusAllowedIp(
+  token: string,
+  body: { cidr: string; label?: string; enabled?: boolean },
+) {
+  return api<RadiusAllowedIp>(`${v1}/admin/radius-allowlist`, { method: "POST", token, body });
+}
+export function updateRadiusAllowedIp(
+  token: string,
+  id: string,
+  body: { label?: string; enabled?: boolean },
+) {
+  return api<RadiusAllowedIp>(`${v1}/admin/radius-allowlist/${id}`, { method: "PATCH", token, body });
+}
+export function deleteRadiusAllowedIp(token: string, id: string) {
+  return api<void>(`${v1}/admin/radius-allowlist/${id}`, { method: "DELETE", token });
+}
+
 // -- Account security --------------------------------------------------------
 export function changeMyPassword(token: string, body: { currentPassword: string; newPassword: string }) {
   return api<{ ok: true }>(`${v1}/me/password`, { method: "POST", token, body });

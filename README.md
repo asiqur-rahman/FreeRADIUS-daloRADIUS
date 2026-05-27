@@ -1,6 +1,8 @@
-# Enterprise WiFi RADIUS Management Platform
+# RadiusNexus — Enterprise Wi-Fi Access Control Platform
 
-Production-grade 802.1X / PEAP / EAP-TLS management platform with admin and self-service dashboards.
+Production-grade **802.1X / PEAP-MSCHAPv2 / EAP-TLS** Wi-Fi management platform with device approval workflow, Telegram notifications, and a full admin & self-service dashboard.
+
+> **Developed and maintained by Md. Asiqur Rahman Khan**
 
 See [`RADIUS_Platform_Architecture.docx`](./RADIUS_Platform_Architecture.docx) for the full architecture specification.
 

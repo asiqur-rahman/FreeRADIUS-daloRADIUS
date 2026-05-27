@@ -23,8 +23,10 @@ import meDeviceRoutes from "./routes/meDevices.js";
 import adminSessionRoutes from "./routes/admin/sessions.js";
 import adminOperationRoutes from "./routes/admin/operations.js";
 import adminDeviceRoutes from "./routes/admin/devices.js";
+import adminRadiusAllowlistRoutes from "./routes/admin/radiusAllowlist.js";
 import mfaRoutes from "./routes/mfa.js";
 import radiusRoutes from "./routes/radius.js";
+import eventsRoutes from "./routes/events.js";
 import { Forbidden } from "./lib/errors.js";
 
 export async function buildServer(opts: FastifyServerOptions = {}) {
@@ -80,8 +82,11 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
       await api.register(adminSessionRoutes, { prefix: "/admin" });
       await api.register(adminOperationRoutes, { prefix: "/admin" });
       await api.register(adminDeviceRoutes, { prefix: "/admin" });
+      await api.register(adminRadiusAllowlistRoutes, { prefix: "/admin" });
       // FreeRADIUS rlm_rest hook — internal, protected by shared secret.
       await api.register(radiusRoutes, { prefix: "/radius" });
+      // Server-Sent Events stream for admin dashboards.
+      await api.register(eventsRoutes);
     },
     { prefix: "/api/v1" },
   );

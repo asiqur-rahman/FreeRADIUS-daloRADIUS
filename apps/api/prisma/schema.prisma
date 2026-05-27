@@ -57,6 +57,9 @@ enum AuditAction {
   mfa_disable
   device_approve
   device_reject
+  radius_ip_create
+  radius_ip_delete
+  radius_ip_update
 }
 
 enum AuthEventType {
@@ -292,6 +295,21 @@ model EapCertificate {
 
   @@index([expiresAt])
   @@map("eap_certificates")
+}
+
+// ── RADIUS hook IP allowlist ─────────────────────────────────────────
+//   When RADIUS_IP_GUARD_ENABLED=true the /radius/* preHandler checks
+//   the source IP against this table.  Empty table = allow all.
+//   Managed from the admin Settings view.
+
+model RadiusAllowedIp {
+  id        String   @id @default(cuid())
+  cidr      String   @unique @db.VarChar(50) // "192.168.1.1" or "10.0.0.0/24"
+  label     String?  @db.VarChar(80)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("radius_allowed_ips")
 }
 
 // ── M2M tokens (Phase 1: scaffold only, not yet exposed) ────────────

@@ -1,8 +1,14 @@
 {
-  "name": "wifi-radius-platform",
+  "name": "radiusnexus",
   "version": "0.1.0",
   "private": true,
-  "description": "Enterprise WiFi RADIUS Management Platform",
+  "description": "RadiusNexus — Enterprise Wi-Fi Access Control Platform (PEAP / EAP-TLS, device approval workflow, Telegram notifications)",
+  "author": "Md. Asiqur Rahman Khan",
+  "maintainers": [
+    {
+      "name": "Md. Asiqur Rahman Khan"
+    }
+  ],
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r run build",

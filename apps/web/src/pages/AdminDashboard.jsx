@@ -1,12 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Users, Wifi, Shield, Activity, AlertTriangle, CheckCircle2, Search,
   MoreVertical, Plus, Download, Bell, Settings, LogOut, ChevronRight,
   Radio, Server, Lock, Edit3, RefreshCw, ArrowUpRight, ArrowDownRight,
   Power, FileText, Globe, Smartphone, Laptop, Tablet,
   AlertCircle, Database, KeyRound, ShieldCheck,
-  Home, UsersRound, Layers, Cpu, BookOpen, Sparkles
+  Home, UsersRound, Layers, Cpu, BookOpen, Sparkles, Menu, X
 } from 'lucide-react';
+import { listAdminDevices } from '../api/endpoints';
+import { useSSE } from '../hooks/useSSE';
 import { useAuth } from '../auth/AuthContext';
 import { LiveNasView } from '../views/LiveNasView';
 import { LiveSessionsView } from '../views/LiveSessionsView';
@@ -166,7 +168,7 @@ function Overview({ live = true }) {
   return (
     <div className="space-y-6">
       {/* Stat row */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={Users} label="Active Users" value="847" delta="+12 today" accent="bg-emerald-600" />
         <StatCard icon={Wifi} label="Live Sessions" value="771" delta="+34 (1h)" accent="bg-sky-600" />
         <StatCard icon={Shield} label="Auth Success" value="98.7%" delta="+0.2%" accent="bg-violet-600" />
@@ -174,9 +176,9 @@ function Overview({ live = true }) {
       </div>
 
       {/* Main grid */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Auth trend - 2 cols */}
-        <div className="col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
+        <div className="lg:col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-white">Authentication Activity</h3>
@@ -243,9 +245,9 @@ function Overview({ live = true }) {
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Site usage */}
-        <div className="col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
+        <div className="lg:col-span-2 bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-white">Sessions by Site</h3>
@@ -407,7 +409,7 @@ function SessionsView({ live = true }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3">
           <div className="text-xs text-zinc-500 uppercase tracking-wider">Active</div>
           <div className="text-2xl font-semibold text-white mt-1 tabular-nums">771</div>
@@ -671,8 +673,11 @@ function SettingsView({ live = true }) {
 
 export default function AdminDashboard() {
   const [view, setView] = useState('overview');
-  const { user, logout } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const { user, logout, token } = useAuth();
   const initials = (user?.fullName || user?.username || 'AD').split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase();
+
   const titles = {
     overview: 'Overview',
     users: 'Users',
@@ -684,70 +689,148 @@ export default function AdminDashboard() {
     settings: 'Settings',
   };
 
+  // Fetch initial pending device count
+  const refreshPendingCount = useCallback(async () => {
+    if (!token) return;
+    try {
+      const result = await listAdminDevices(token, { status: 'pending', pageSize: 1 });
+      setPendingCount(result.total ?? result.items?.length ?? 0);
+    } catch {
+      // ignore — badge is cosmetic
+    }
+  }, [token]);
+
+  useEffect(() => { void refreshPendingCount(); }, [refreshPendingCount]);
+
+  // Update badge in real-time via SSE
+  useSSE(token, {
+    'device.pending': () => void refreshPendingCount(),
+    'device.decided': () => void refreshPendingCount(),
+  });
+
+  const navigate = (id) => {
+    setView(id);
+    setSidebarOpen(false); // close sidebar on mobile after navigation
+  };
+
+  const SidebarContent = () => (
+    <>
+      <div className="p-5 border-b border-zinc-800">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-white" strokeWidth={2.5}/>
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-white tracking-tight">RadiusNexus</div>
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Admin Console</div>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        {navItems.map(n => {
+          const Icon = n.icon;
+          const active = view === n.id;
+          const isDevices = n.id === 'devices';
+          return (
+            <button key={n.id} onClick={() => navigate(n.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
+                active ? 'bg-indigo-600/20 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100'
+              }`}>
+              <Icon className={`w-4 h-4 flex-shrink-0 ${active ? 'text-indigo-400' : ''}`}/>
+              <span className="font-medium flex-1 text-left">{n.label}</span>
+              {isDevices && pendingCount > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white min-w-[18px]">
+                  {pendingCount > 99 ? '99+' : pendingCount}
+                </span>
+              )}
+              {active && !isDevices && <div className="ml-auto w-1 h-1 rounded-full bg-indigo-400"/>}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="p-3 border-t border-zinc-800">
+        <div className="bg-zinc-800/50 rounded-lg p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center text-xs font-semibold text-white flex-shrink-0">{initials}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-white truncate">{user?.fullName || user?.username || 'Admin'}</div>
+            <div className="text-[10px] text-zinc-500 truncate flex items-center gap-1">
+              <ShieldCheck className="w-2.5 h-2.5 text-emerald-400"/>{user?.mfaEnabled ? 'MFA enabled' : 'Signed in'}
+            </div>
+          </div>
+          <button onClick={logout} title="Sign out" className="text-zinc-500 hover:text-zinc-200 flex-shrink-0"><LogOut className="w-3.5 h-3.5"/></button>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans" style={{fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif'}}>
       <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-60 min-h-screen bg-zinc-900/80 border-r border-zinc-800 flex flex-col">
-          <div className="p-5 border-b border-zinc-800">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-white" strokeWidth={2.5}/>
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-white tracking-tight">RadiusOps</div>
-                <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Admin Console</div>
-              </div>
-            </div>
+
+        {/* ── Desktop sidebar (always visible ≥ lg) ─────────────────── */}
+        <aside className="hidden lg:flex w-60 min-h-screen bg-zinc-900/80 border-r border-zinc-800 flex-col flex-shrink-0">
+          <SidebarContent />
+        </aside>
+
+        {/* ── Mobile sidebar overlay ─────────────────────────────────── */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-zinc-900 border-r border-zinc-800 transition-transform duration-200 lg:hidden ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-end p-3 border-b border-zinc-800">
+            <button onClick={() => setSidebarOpen(false)} className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-
-          <nav className="flex-1 p-3 space-y-1">
-            {navItems.map(n => {
-              const Icon = n.icon;
-              const active = view === n.id;
-              return (
-                <button key={n.id} onClick={()=>setView(n.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
-                    active ? 'bg-indigo-600/20 text-white' : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100'
-                  }`}>
-                  <Icon className={`w-4 h-4 ${active ? 'text-indigo-400' : ''}`}/>
-                  <span className="font-medium">{n.label}</span>
-                  {active && <div className="ml-auto w-1 h-1 rounded-full bg-indigo-400"/>}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="p-3 border-t border-zinc-800">
-            <div className="bg-zinc-800/50 rounded-lg p-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center text-xs font-semibold text-white">{initials}</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-white truncate">{user?.fullName || user?.username || 'Admin'}</div>
-                <div className="text-[10px] text-zinc-500 truncate flex items-center gap-1">
-                  <ShieldCheck className="w-2.5 h-2.5 text-emerald-400"/>{user?.mfaEnabled ? 'MFA enabled' : 'Signed in'}
-                </div>
-              </div>
-              <button onClick={logout} title="Sign out" className="text-zinc-500 hover:text-zinc-200"><LogOut className="w-3.5 h-3.5"/></button>
-            </div>
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <SidebarContent />
           </div>
         </aside>
 
         {/* Main */}
         <main className="flex-1 min-w-0">
           {/* Top bar */}
-          <header className="h-14 border-b border-zinc-800 px-6 flex items-center justify-between bg-zinc-950/60 backdrop-blur sticky top-0 z-10">
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-zinc-500">Operations</span>
-              <ChevronRight className="w-3 h-3 text-zinc-700"/>
-              <span className="text-zinc-100 font-medium">{titles[view]}</span>
+          <header className="h-14 border-b border-zinc-800 px-4 lg:px-6 flex items-center justify-between bg-zinc-950/60 backdrop-blur sticky top-0 z-10">
+            <div className="flex items-center gap-3">
+              {/* Hamburger — mobile only */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="hidden sm:inline text-zinc-500">Operations</span>
+                <ChevronRight className="hidden sm:inline w-3 h-3 text-zinc-700"/>
+                <span className="text-zinc-100 font-medium">{titles[view]}</span>
+              </div>
             </div>
+
             <div className="flex items-center gap-2">
-              <button className="relative p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors">
+              {/* Bell with real pending count */}
+              <button
+                onClick={() => navigate('devices')}
+                className="relative p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors"
+                title={pendingCount > 0 ? `${pendingCount} device(s) awaiting approval` : 'Device approvals'}
+              >
                 <Bell className="w-4 h-4"/>
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full"/>
+                {pendingCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center rounded-full bg-rose-500 px-1 py-0.5 text-[9px] font-bold text-white min-w-[16px] leading-none">
+                    {pendingCount > 9 ? '9+' : pendingCount}
+                  </span>
+                )}
               </button>
               <div className="h-5 w-px bg-zinc-800"/>
-              <div className="flex items-center gap-2 px-2 py-1 rounded-lg">
+              <div className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-lg">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/>
                 <span className="text-xs text-zinc-400">All systems operational</span>
               </div>
@@ -755,7 +838,7 @@ export default function AdminDashboard() {
           </header>
 
           {/* Content */}
-          <div className="p-6">
+          <div className="p-4 lg:p-6">
             {view === 'overview' && <Overview/>}
             {view === 'users' && <UsersView/>}
             {view === 'devices' && <LiveDeviceApprovalsView/>}
@@ -765,6 +848,17 @@ export default function AdminDashboard() {
             {view === 'audit' && <AuditView/>}
             {view === 'settings' && <SettingsView/>}
           </div>
+
+          {/* Footer */}
+          <footer className="border-t border-zinc-800/60 px-4 lg:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-zinc-600">
+              © {new Date().getFullYear()} <span className="text-zinc-500 font-medium">RadiusNexus</span> — Enterprise Wi-Fi Access Control
+            </span>
+            <span className="text-[11px] text-zinc-600">
+              Developed &amp; maintained by{' '}
+              <span className="text-zinc-400 font-medium">Md. Asiqur Rahman Khan</span>
+            </span>
+          </footer>
         </main>
       </div>
     </div>

@@ -1,4 +1,7 @@
-# WPA Enterprise Approval — Status & Next Steps
+# RadiusNexus — WPA Enterprise Approval: Status & Next Steps
+
+> **Product:** RadiusNexus — Enterprise Wi-Fi Access Control Platform
+> **Developed and maintained by:** Md. Asiqur Rahman Khan
 
 This file tracks the **FreeRADIUS REST approval workflow** (PEAP device onboarding, Telegram/dashboard decisions, EAP-TLS managed certs). It is separate from the platform delivery phases in [`docs/DEVELOPMENT_PHASES.md`](./docs/DEVELOPMENT_PHASES.md) and [`README.md`](./README.md#phase-status), where Phases 1–6 (foundation through productionization) are already delivered in the repository.
 
@@ -48,30 +51,38 @@ apps/api  (Fastify + Prisma)
 
 ---
 
+## What Is Done (Gap Closure — 2026-05-27)
+
+| Feature | Status | Where |
+|---------|--------|-------|
+| **IP Guard** — DB-backed allowlist, admin panel CRUD | Done | `apps/api/src/lib/ipGuard.ts`, `apps/api/src/routes/admin/radiusAllowlist.ts`, `apps/web/src/views/LiveSettingsView.tsx` |
+| `RADIUS_IP_GUARD_ENABLED` config flag | Done | `apps/api/src/config.ts` |
+| `RadiusAllowedIp` Prisma model + migration | Done | `apps/api/prisma/schema.prisma`, migration `20260527150000_radius_ip_allowlist` |
+| **SSE real-time events** — device.pending / device.decided | Done | `apps/api/src/lib/events.ts`, `apps/api/src/routes/events.ts` |
+| SSE emitters in `radius.ts` and `deviceApprovals.ts` | Done | respective files |
+| `useSSE` React hook | Done | `apps/web/src/hooks/useSSE.ts` |
+| Live auto-refresh in `LiveDeviceApprovalsView` | Done | `apps/web/src/views/LiveDeviceApprovalsView.tsx` |
+| **Bell badge** — real pending count, SSE-updated | Done | `apps/web/src/pages/AdminDashboard.jsx` |
+| **Mobile responsive sidebar** — hamburger menu, slide-in overlay | Done | `apps/web/src/pages/AdminDashboard.jsx` |
+| **PWA** — vite-plugin-pwa, web manifest, theme-color, apple-touch-icon | Done | `apps/web/vite.config.ts`, `apps/web/index.html`, `apps/web/public/icons/` |
+| Title + meta tags updated to RadiusNexus | Done | `apps/web/index.html` |
+
+---
+
 ## What Is Not Done Yet
 
-### 1. Database migration
+### 1. Database migrations
 
-The approval workflow migration is now checked in as:
+Two migrations must be applied (in order) before first end-to-end test:
 
-```text
-apps/api/prisma/migrations/20260527090000_device_approval_workflow/
-```
-
-It adds:
-
-- `DeviceStatus`
-- `user_devices.status`
-- `device_approvals`
-- `device_approve` / `device_reject` audit enum values
-
-It also backfills pre-existing `user_devices` rows to `approved` so older installs keep their prior behavior instead of suddenly dropping known devices into quarantine.
-
-Before first end-to-end test on a clean database:
+| Migration | Adds |
+|-----------|------|
+| `20260527090000_device_approval_workflow` | `DeviceStatus`, `user_devices.status`, `device_approvals`, audit enum values; backfills existing rows to `approved` |
+| `20260527150000_radius_ip_allowlist` | `radius_allowed_ips` table; `radius_ip_create/delete/update` audit enum values |
 
 ```bash
 pnpm db:migrate
-pnpm db:generate
+pnpm db:generate   # already done if you ran this after the first migration
 pnpm db:status
 ```
 
@@ -130,19 +141,33 @@ These are **deployment acceptance** items, not missing application code:
 
 ---
 
-## File map (approval + EAP-TLS)
+## File map (approval + EAP-TLS + gap closure)
 
 ```
 apps/api/
-  prisma/schema.prisma              DeviceStatus, DeviceApproval, certFingerprint
-  src/routes/radius.ts              /authorize, /post-auth
-  src/services/deviceApprovals.ts   approve/reject + disconnect
+  prisma/schema.prisma              DeviceStatus, DeviceApproval, RadiusAllowedIp
+  prisma/migrations/
+    20260527090000_device_approval_workflow/
+    20260527150000_radius_ip_allowlist/
+  src/config.ts                     RADIUS_IP_GUARD_ENABLED + VLAN IDs
+  src/routes/radius.ts              /authorize (PEAP + EAP-TLS), /post-auth + SSE emit
+  src/routes/events.ts              GET /events  — SSE stream (JWT via QS token=)
+  src/routes/admin/radiusAllowlist.ts  CRUD for radius_allowed_ips
+  src/services/deviceApprovals.ts   approve/reject + disconnect + SSE emit
   src/services/deviceCertificates.ts bind / issue / clear certs
+  src/lib/events.ts                 in-process EventEmitter (platform event bus)
+  src/lib/ipGuard.ts                CIDR match + 30 s in-memory cache
   src/lib/telegram.ts               polling + inline keyboard
   src/lib/clientCertificates.ts     PEM parse + fingerprint for EAP-TLS identity
 
 apps/web/
-  src/views/LiveDeviceApprovalsView.tsx   pending queue, inventory, history, certs
+  src/hooks/useSSE.ts               EventSource hook with auto-reconnect
+  src/views/LiveDeviceApprovalsView.tsx  live auto-refresh via SSE
+  src/views/LiveSettingsView.tsx    EAP cert inventory + IP allowlist CRUD
+  src/pages/AdminDashboard.jsx      responsive sidebar + bell badge (real count)
+  vite.config.ts                    vite-plugin-pwa manifest
+  index.html                        PWA meta tags, theme-color
+  public/icons/                     SVG source icon (generate PNG for production)
 
 infra/freeradius/raddb/
   mods-available/rest

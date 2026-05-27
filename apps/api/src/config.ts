@@ -71,6 +71,11 @@ const schema = z.object({
   // Shared secret checked on every /radius/* request (X-Radius-Hook-Secret).
   RADIUS_HOOK_SECRET: z.string().min(16).default("dev-hook-secret-change-in-prod"),
 
+  // When true the /radius/* preHandler also enforces the IP allowlist
+  // stored in radius_allowed_ips (admin Settings → RADIUS IP Guard).
+  // Set to false for local dev / lab convenience.
+  RADIUS_IP_GUARD_ENABLED: envBoolean.default(false),
+
   // VLAN IDs returned to the AP via Tunnel-Private-Group-ID.
   QUARANTINE_VLAN_ID: z.coerce.number().int().positive().default(99),
   NORMAL_VLAN_ID:     z.coerce.number().int().positive().default(10),

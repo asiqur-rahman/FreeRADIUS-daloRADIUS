@@ -28,6 +28,7 @@ import {
 } from "../api/endpoints";
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useSSE } from "../hooks/useSSE";
 
 type DeviceTab = "pending" | "devices" | "history";
 type DeviceFilter = "all" | "pending" | "approved" | "rejected";
@@ -128,6 +129,12 @@ export function LiveDeviceApprovalsView() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Real-time refresh via SSE — auto-reload when a device connects or is decided
+  useSSE(token, {
+    "device.pending": () => { void load(); },
+    "device.decided": () => { void load(); },
+  });
 
   const counts = useMemo(() => {
     return overview.reduce(
@@ -249,7 +256,7 @@ export function LiveDeviceApprovalsView() {
         </button>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatTile label="Pending" value={counts.pending} hint="Needs an operator decision" />
         <StatTile label="Approved" value={counts.approved} hint="Allowed onto the normal policy path" />
         <StatTile label="Rejected" value={counts.rejected} hint="Blocked at the approval layer" />
