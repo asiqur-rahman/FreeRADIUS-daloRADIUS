@@ -17,6 +17,7 @@ import {
   Copy,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   X,
 } from "lucide-react";
 import type { NasClient, NasVendor, Site } from "@app/shared";
@@ -44,6 +45,22 @@ export function LiveNasView() {
   const [revealedSecret, setRevealedSecret] = useState<{ nasname: string; secret: string } | null>(
     null,
   );
+  const [restartNeeded, setRestartNeeded] = useState(
+    () => localStorage.getItem("radius_nas_restart_needed") === "true",
+  );
+  const [cmdCopied, setCmdCopied] = useState(false);
+
+  const RESTART_CMD = "docker compose restart freeradius";
+
+  function markRestartNeeded() {
+    localStorage.setItem("radius_nas_restart_needed", "true");
+    setRestartNeeded(true);
+  }
+
+  function dismissRestart() {
+    localStorage.removeItem("radius_nas_restart_needed");
+    setRestartNeeded(false);
+  }
 
   const reload = useCallback(async () => {
     if (!token) return;
@@ -70,6 +87,47 @@ export function LiveNasView() {
         <Header onCreate={() => setCreating(true)} onReload={reload} loading={loading} />
         <PageHelp title="NAS Clients" description="Network Access Servers (NAS) are the access points, switches, or controllers that forward RADIUS authentication requests to this server. Each NAS must have a registered IP address and a shared secret that exactly matches the device's own RADIUS client configuration." tips={["The shared secret must match exactly what is configured on the AP or switch — a mismatch causes all authentication requests from that device to silently fail", "CoA port (default 3799) is used to send Disconnect-Requests and policy-change packets to live sessions on the NAS", "NAS entries are stored in the 'nas' Postgres table and read by FreeRADIUS via the SQL module — no SSH or config file editing required"]} />
       </div>
+
+      {restartNeeded && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-amber-200 mb-1">FreeRADIUS restart required</p>
+            <p className="text-xs text-amber-400/80 mb-2">
+              NAS client changes are stored in the database but FreeRADIUS reads them only at
+              startup. Restart the container to apply the changes:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-2.5 py-1.5 rounded bg-zinc-950/60 border border-amber-500/20 text-xs font-mono text-amber-200 truncate">
+                {RESTART_CMD}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(RESTART_CMD).catch(() => {});
+                  setCmdCopied(true);
+                  setTimeout(() => setCmdCopied(false), 1500);
+                }}
+                className="shrink-0 px-2 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+                title="Copy command"
+              >
+                {cmdCopied ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={dismissRestart}
+            className="shrink-0 text-amber-500/60 hover:text-amber-300 transition-colors"
+            title="Dismiss (confirm you have restarted FreeRADIUS)"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {err && (
         <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -85,6 +143,7 @@ export function LiveNasView() {
           try {
             const r = await rotateNasSecret(token, id);
             setRevealedSecret({ nasname: r.nasname, secret: r.newSecret });
+            markRestartNeeded();
             void reload();
           } catch (e) {
             setErr(e instanceof ApiCallError ? e.payload.message : "Failed to rotate secret");
@@ -95,6 +154,7 @@ export function LiveNasView() {
           if (!window.confirm("Delete this NAS? It will stop accepting RADIUS requests.")) return;
           try {
             await deleteNas(token, id);
+            markRestartNeeded();
             void reload();
           } catch (e) {
             setErr(e instanceof ApiCallError ? e.payload.message : "Failed to delete NAS");
@@ -104,6 +164,7 @@ export function LiveNasView() {
           if (!token) return;
           try {
             await updateNas(token, nas.id, { enabled: !nas.enabled });
+            markRestartNeeded();
             void reload();
           } catch (e) {
             setErr(e instanceof ApiCallError ? e.payload.message : "Update failed");
@@ -118,6 +179,7 @@ export function LiveNasView() {
           onCreated={(generated) => {
             setCreating(false);
             if (generated) setRevealedSecret(generated);
+            markRestartNeeded();
             void reload();
           }}
         />
