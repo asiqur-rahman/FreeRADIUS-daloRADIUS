@@ -45,6 +45,7 @@ server default {
         }
 
         sql
+        mschap
         expiration
         logintime
         pap
