@@ -25,16 +25,11 @@ import { isIpAllowed } from "../lib/ipGuard.js";
 import { normalizeMac } from "../lib/mac.js";
 import { sendApprovalRequest } from "../lib/telegram.js";
 
-interface RlmAttr {
-  name: string;
-  value: string;
-  op?: string;
-}
-
-interface RlmRestResponse {
-  control?: RlmAttr[];
-  reply?: RlmAttr[];
-}
+// rlm_rest 3.2.x expects a FLAT dict response — nested arrays / objects are
+// silently skipped with "Found nested VP, these are not yet supported".
+// Keys are prefixed with "control:" or "reply:" to indicate the attribute list.
+// Values are plain strings; the operator defaults to := (set/override).
+type FlatRlmResponse = Record<string, string>;
 
 interface UserGroupReplyShape {
   priority: number;
@@ -62,74 +57,59 @@ interface AuthorizeBody {
   certEmail?: string;
 }
 
-function vlanReply(vlanId: number): RlmAttr[] {
-  return [
-    { name: "Tunnel-Type", value: "13" },
-    { name: "Tunnel-Medium-Type", value: "6" },
-    { name: "Tunnel-Private-Group-ID", value: String(vlanId) },
-  ];
+function vlanReply(vlanId: number): FlatRlmResponse {
+  return {
+    "reply:Tunnel-Type":              "13",
+    "reply:Tunnel-Medium-Type":       "6",
+    "reply:Tunnel-Private-Group-ID":  String(vlanId),
+  };
 }
 
 function attributeKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function normalizeReplyAttr(attr: RlmAttr): RlmAttr {
-  const key = attributeKey(attr.name);
-  if (key === "tunnel-type") {
-    return {
-      ...attr,
-      name: "Tunnel-Type",
-      value: /^vlan$/i.test(attr.value) ? "13" : attr.value,
-    };
-  }
-  if (key === "tunnel-medium-type") {
-    return {
-      ...attr,
-      name: "Tunnel-Medium-Type",
-      value: /^ieee-802$/i.test(attr.value) ? "6" : attr.value,
-    };
-  }
-  if (key === "tunnel-private-group-id") {
-    return { ...attr, name: "Tunnel-Private-Group-ID" };
-  }
-  return attr;
+/** Normalize a group attribute name/value to the canonical VLAN triple. */
+function normalizeGroupAttr(name: string, value: string): [replyKey: string, val: string] {
+  const key = attributeKey(name);
+  if (key === "tunnel-type")
+    return ["reply:Tunnel-Type", /^vlan$/i.test(value) ? "13" : value];
+  if (key === "tunnel-medium-type")
+    return ["reply:Tunnel-Medium-Type", /^ieee-802$/i.test(value) ? "6" : value];
+  if (key === "tunnel-private-group-id")
+    return ["reply:Tunnel-Private-Group-ID", value];
+  // Other reply attributes — pass through with reply: prefix.
+  return [`reply:${name}`, value];
 }
 
-function replyFromGroups(groups: UserGroupReplyShape[], fallbackVlanId: number): RlmAttr[] {
-  const merged = new Map<string, RlmAttr>();
+function replyFromGroups(groups: UserGroupReplyShape[], fallbackVlanId: number): FlatRlmResponse {
+  const merged = new Map<string, string>();
 
   for (const membership of [...groups].sort((a, b) => a.priority - b.priority)) {
     for (const attr of membership.group.attributes) {
       if (attr.kind !== "reply") continue;
-      const normalized = normalizeReplyAttr({
-        name: attr.attribute,
-        value: attr.value,
-        op: attr.op,
-      });
-      const key = attributeKey(normalized.name);
-      if (!merged.has(key)) merged.set(key, normalized);
+      const [flatKey, val] = normalizeGroupAttr(attr.attribute, attr.value);
+      if (!merged.has(flatKey)) merged.set(flatKey, val);
     }
   }
 
-  const attrs = [...merged.values()];
-  const hasVlanId = attrs.some((attr) => attributeKey(attr.name) === "tunnel-private-group-id");
-  const hasTunnelType = attrs.some((attr) => attributeKey(attr.name) === "tunnel-type");
-  const hasTunnelMedium = attrs.some((attr) => attributeKey(attr.name) === "tunnel-medium-type");
+  const out: FlatRlmResponse = Object.fromEntries(merged);
 
-  if (!hasVlanId) return [...attrs, ...vlanReply(fallbackVlanId)];
-
-  const ensured = [...attrs];
-  if (!hasTunnelType) ensured.unshift({ name: "Tunnel-Type", value: "13", op: ":=" });
-  if (!hasTunnelMedium) ensured.unshift({ name: "Tunnel-Medium-Type", value: "6", op: ":=" });
-  return ensured;
+  // Ensure the VLAN triple is present.
+  if (!merged.has("reply:Tunnel-Private-Group-ID")) {
+    Object.assign(out, vlanReply(fallbackVlanId));
+  } else {
+    if (!merged.has("reply:Tunnel-Type"))        out["reply:Tunnel-Type"]        = "13";
+    if (!merged.has("reply:Tunnel-Medium-Type")) out["reply:Tunnel-Medium-Type"] = "6";
+  }
+  return out;
 }
 
 function replyForDevice(
   groups: UserGroupReplyShape[],
   status: "pending" | "approved" | "rejected" | "new",
   c: ReturnType<typeof config>,
-): RlmAttr[] {
+): FlatRlmResponse {
   return status === "approved"
     ? replyFromGroups(groups, c.NORMAL_VLAN_ID)
     : vlanReply(c.QUARANTINE_VLAN_ID);
@@ -204,18 +184,23 @@ async function authorizePeap(
 
   const status = device?.status ?? "new";
   const replyAttrs = replyForDevice(user.groups, status, c);
-  const vlanId =
-    replyAttrs.find((attr) => attributeKey(attr.name) === "tunnel-private-group-id")?.value ??
-    String(status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
+  const vlanId = replyAttrs["reply:Tunnel-Private-Group-ID"]
+    ?? String(status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
 
   req.log.info({ username, mac: normalizedMac, deviceStatus: status, vlanId }, "radius.authorize peap");
 
-  const response: RlmRestResponse = {
-    control: [
-      { name: "NT-Password", value: `0x${ntHash}`, op: ":=" },
-      { name: "Auth-Type", value: "MS-CHAP", op: ":=" },
-    ],
-    reply: replyAttrs,
+  // Flat rlm_rest 3.2.x response — "control:X" keys → control list,
+  // "reply:X" keys → reply list.  Plain string values, operator defaults to :=
+  //
+  // NOTE: Do NOT set control:Auth-Type here.  Inside the PEAP inner tunnel,
+  // EAP-MSCHAPv2 is wrapped in EAP-Message and handled by the `eap` module
+  // (which delegates to its eap_mschapv2 sub-module).  Setting Auth-Type :=
+  // MS-CHAP causes FreeRADIUS to invoke the raw mschap module directly, which
+  // then errors "No MS-CHAP attributes in request" because the challenge/
+  // response are EAP-wrapped, not bare MS-CHAP-Challenge / MS-CHAP2-Response.
+  const response: FlatRlmResponse = {
+    "control:NT-Password": `0x${ntHash}`,
+    ...replyAttrs,
   };
 
   return reply.status(200).send(response);
@@ -336,9 +321,8 @@ async function authorizeEapTls(
   }
 
   const replyAttrs = replyForDevice(device.user.groups, device.status, c);
-  const vlanId =
-    replyAttrs.find((attr) => attributeKey(attr.name) === "tunnel-private-group-id")?.value ??
-    String(device.status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
+  const vlanId = replyAttrs["reply:Tunnel-Private-Group-ID"]
+    ?? String(device.status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
 
   req.log.info(
     {
@@ -353,7 +337,9 @@ async function authorizeEapTls(
     "radius.authorize eap-tls",
   );
 
-  const response: RlmRestResponse = { reply: replyAttrs };
+  // EAP-TLS: no password check needed — cert already validated by FreeRADIUS.
+  // Only VLAN reply attrs are needed.
+  const response: FlatRlmResponse = { ...replyAttrs };
   return reply.status(200).send(response);
 }
 
@@ -361,9 +347,26 @@ const radiusRoutes: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", async (req, reply) => {
     const c = config();
 
-    // 1. Shared-secret check (always)
-    const expected = c.RADIUS_HOOK_SECRET;
-    const received = req.headers["x-radius-hook-secret"];
+    // 1. Shared-secret check (always).
+    //
+    // FreeRADIUS rlm_rest 3.2.x ignores header{} config blocks, so the secret
+    // cannot be delivered as an HTTP header from FreeRADIUS.  Instead it is
+    // appended as ?s=<secret> on the URI (double-quoted string, $ENV{} expanded
+    // at FreeRADIUS config-load time).
+    //
+    // We accept it from three sources so callers remain flexible:
+    //   • X-Radius-Hook-Secret header  — curl / SDK / future FreeRADIUS
+    //   • ?s=<secret> query parameter  — current FreeRADIUS rlm_rest workaround
+    //   • hookSecret body field        — fallback (also works)
+    const expected  = c.RADIUS_HOOK_SECRET;
+    const fromHeader = req.headers["x-radius-hook-secret"];
+    const fromQuery  = (req.query as Record<string, unknown>)?.s;
+    const fromBody   = (req.body  as Record<string, unknown> | null)?.hookSecret;
+    const received   =
+      fromHeader ??
+      (typeof fromQuery === "string" ? fromQuery : undefined) ??
+      (typeof fromBody  === "string" ? fromBody  : undefined);
+
     if (!received || received !== expected) {
       req.log.warn({ ip: req.ip }, "radius.hook unauthorized — bad secret");
       return reply.status(401).send({ error: "Unauthorized" });

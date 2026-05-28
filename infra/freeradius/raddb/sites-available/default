@@ -45,6 +45,25 @@ server default {
         }
 
         sql
+
+        # Direct MS-CHAP (radtest / supplicant without EAP):
+        #
+        # The sql module may have set Auth-Type := EAP from radcheck (e.g. for PEAP
+        # users).  When raw MS-CHAP attributes are already present in the request this
+        # is a plain MS-CHAP exchange — override Auth-Type to MS-CHAP so the mschap
+        # module handles authenticate instead of the eap module.
+        #
+        # Controlled by the ALLOW_DIRECT_MSCHAP environment variable:
+        #   true  → direct MS-CHAP / radtest allowed (useful for lab / testing)
+        #   false → PEAP-only; direct MS-CHAP attempts are rejected (production default)
+        if ("$ENV{ALLOW_DIRECT_MSCHAP}" == "true") {
+            if (&MS-CHAP-Response || &MS-CHAP2-Response) {
+                update control {
+                    &Auth-Type := MS-CHAP
+                }
+            }
+        }
+
         mschap
         expiration
         logintime

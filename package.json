@@ -24,6 +24,7 @@
     "lab:config": "powershell -File .\\ops\\print-lab-config.ps1",
     "lab:device-ca": "powershell -File .\\ops\\generate-dev-device-ca.ps1",
     "lab:client-cert": "powershell -File .\\ops\\generate-test-client-cert.ps1",
+    "certs:generate": "bash infra/freeradius/generate-certs.sh",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:build": "docker compose build",

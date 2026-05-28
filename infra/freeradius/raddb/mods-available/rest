@@ -14,15 +14,13 @@ rest {
     #  Returns NT-Password in control{} and VLAN attributes in reply{}.
     #  HTTP 4xx → unknown user or rejected device → FreeRADIUS rejects.
     authorize {
-        uri    = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}/api/v1/radius/authorize"
+        # $ENV{} is expanded at config-load time in double-quoted strings.
+        # rlm_rest 3.2.x ignores header{} blocks so the secret rides as a
+        # query-parameter on the URI instead of an HTTP header.
+        uri    = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}/api/v1/radius/authorize?s=$ENV{HOOK_SECRET}"
         method = 'post'
         body   = 'json'
         data   = '{"authMethod":"%{control:Tmp-String-0}","username":"%{User-Name}","mac":"%{%{outer.request:Calling-Station-Id}:-%{Calling-Station-Id}}","nasIp":"%{NAS-IP-Address}","nasIdentifier":"%{NAS-Identifier}","calledStationId":"%{%{outer.request:Called-Station-Id}:-%{Called-Station-Id}}","certSubject":"%{session-state:TLS-Client-Cert-Subject}","certIssuer":"%{session-state:TLS-Client-Cert-Issuer}","certSerial":"%{session-state:TLS-Client-Cert-Serial}","certCommonName":"%{session-state:TLS-Client-Cert-Common-Name}","certEmail":"%{session-state:TLS-Client-Cert-Subject-Alt-Name-Email}"}'
-
-        header {
-            name  = "X-Radius-Hook-Secret"
-            value = "$ENV{HOOK_SECRET}"
-        }
     }
 
     # ── post-auth ────────────────────────────────────────────────────
@@ -30,15 +28,10 @@ rest {
     #  The hook registers the device on first connect and fires the
     #  Telegram approval notification to the admin.
     post-auth {
-        uri    = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}/api/v1/radius/post-auth"
+        uri    = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}/api/v1/radius/post-auth?s=$ENV{HOOK_SECRET}"
         method = 'post'
         body   = 'json'
         data   = '{"username":"%{User-Name}","mac":"%{outer.request:Calling-Station-Id}","nasIp":"%{NAS-IP-Address}","vlan":"%{reply:Tunnel-Private-Group-ID}"}'
-
-        header {
-            name  = "X-Radius-Hook-Secret"
-            value = "$ENV{HOOK_SECRET}"
-        }
     }
 
     # ── connection pool ──────────────────────────────────────────────

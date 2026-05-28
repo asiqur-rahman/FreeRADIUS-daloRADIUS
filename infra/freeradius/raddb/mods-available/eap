@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────
+#  EAP module — PEAP-MSCHAPv2 + EAP-TLS.
+#
+#  Certificates are loaded from /etc/raddb/certs/ which is volume-
+#  mounted from infra/freeradius/raddb/certs/ on the host.
+#
+#  Dev  : run  pnpm certs:generate  to create a self-signed CA + server
+#         cert. Import ca.pem into your test device once.
+#  Prod : replace files in infra/freeradius/raddb/certs/ with your
+#         Let's Encrypt or commercial certs, then:
+#             docker compose restart freeradius
+# ─────────────────────────────────────────────────────────────────────
+
+eap {
+    default_eap_type = peap
+
+    timer_expire     = 60
+    ignore_unknown_eap_types = no
+    cisco_accounting_username_bug = no
+    max_sessions = ${max_requests}
+
+    tls-config tls-common {
+        private_key_file = /etc/raddb/certs/server.key
+        certificate_file = /etc/raddb/certs/server.pem
+        ca_file          = /etc/raddb/certs/ca.pem
+
+        fragment_size    = 1024
+        include_length   = yes
+        auto_chain       = yes
+        check_crl        = no
+
+        # ECDHE-only: no dh_file required, works on all modern clients
+        # (Android 4+, iOS 9+, Windows 7+, macOS 10.11+).
+        cipher_list      = "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256"
+        tls_min_version  = "1.2"
+        ecdh_curve       = "prime256v1"
+
+        cache {
+            enable      = no
+            lifetime    = 24
+            max_entries = 255
+        }
+
+        verify {
+        }
+
+        ocsp {
+            enable = no
+        }
+    }
+
+    # ── PEAP (WPA2-Enterprise with username + password) ───────────────
+    peap {
+        tls                    = tls-common
+        default_eap_type       = mschapv2
+        copy_request_to_tunnel = no
+        use_tunneled_reply     = yes
+        virtual_server         = "inner-tunnel"
+    }
+
+    mschapv2 {
+    }
+
+    # ── EAP-TLS (certificate-based, optional) ────────────────────────
+    tls {
+        tls           = tls-common
+        virtual_server = "check-eap-tls"
+    }
+}

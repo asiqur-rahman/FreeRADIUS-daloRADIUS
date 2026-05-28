@@ -22,12 +22,24 @@ server inner-tunnel {
         mschap
         suffix
 
+        # The eap module MUST run in authorize so it can detect the EAP-Message
+        # attribute and set Auth-Type := EAP.  Without this, FreeRADIUS fails
+        # with "No Auth-Type found" even though the authenticate section has
+        # a bare `eap` entry.  ok = return skips subsequent modules when EAP
+        # is already fully handled (e.g. inner method already accepted).
+        eap {
+            ok = return
+        }
+
         update control {
             &Tmp-String-0 := "peap"
         }
 
         rest
-        if (rest != ok && rest != updated) {
+        # In FreeRADIUS 3.2.x unlang, "if (rest != ok && rest != updated)"
+        # unexpectedly evaluates to TRUE even when rest returns "updated".
+        # Explicitly enumerate the failure rcodes instead.
+        if (rest == fail || rest == reject || rest == notfound || rest == invalid) {
             reject
         }
 
@@ -36,11 +48,14 @@ server inner-tunnel {
     }
 
     authenticate {
-        Auth-Type MS-CHAP {
-            mschap
-        }
-
-        Auth-Type MS-CHAP-V2 {
+        # Use the lowercase name "mschap" — the rlm_mschap module registers
+        # its Auth-Type as "mschap" (lowercase) at instantiation time.
+        # eap_mschapv2 looks up Auth-Type by the numeric value for "MSCHAP"
+        # (case-insensitive, so it finds "mschap").  The rbtree key must match,
+        # so this section must be named "mschap" to match that key.
+        # "Auth-Type MS-CHAP" compiles to a DIFFERENT numeric key and is
+        # never found by the eap_mschapv2 → process_authenticate call.
+        Auth-Type mschap {
             mschap
         }
 
