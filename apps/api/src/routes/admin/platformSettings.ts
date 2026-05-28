@@ -13,6 +13,7 @@ import {
   getTelegramSettings,
   saveTelegramSettings,
   reloadTelegramPolling,
+  stopTelegramPolling,
 } from "../../lib/telegram.js";
 
 function maskSecret(value: string | null): string | null {
@@ -81,6 +82,9 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
         const freshChatId  = changes.adminChatId !== undefined ? changes.adminChatId : current.adminChatId;
         if (freshToken && freshChatId) {
           await reloadTelegramPolling();
+        } else {
+          // Credentials incomplete or cleared — stop any running poll loop.
+          stopTelegramPolling();
         }
       }
     }

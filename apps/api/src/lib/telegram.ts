@@ -286,7 +286,7 @@ async function handleCallback(
 
   const newStatus  = action === "approve" ? ("approved" as const) : ("rejected" as const);
   const emoji      = action === "approve" ? "✅" : "❌";
-  const deciderName = cb.from.first_name ?? "Telegram admin";
+  const deciderName = cb.from.first_name ?? cb.from.username ?? "Telegram admin";
 
   const decision = await decideDevice({
     deviceId,
@@ -345,7 +345,7 @@ interface TgUpdate {
 
 interface TgCallbackQuery {
   id:       string;
-  from:     { first_name: string };
+  from:     { first_name?: string; username?: string };
   message?: { message_id: number; chat: { id: number } };
   data?:    string;
 }

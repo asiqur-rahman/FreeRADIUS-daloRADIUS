@@ -17,6 +17,7 @@
 
 import type { FastifyPluginAsync } from "fastify";
 import { subscribePlatformEvents } from "../lib/events.js";
+import type { AuthTokenPayload } from "../plugins/auth.js";
 
 const eventsRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: { token?: string } }>("/events", async (req, reply) => {
@@ -27,7 +28,8 @@ const eventsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
-      await req.jwtVerify();
+      const payload = await req.jwtVerify<AuthTokenPayload>();
+      if (payload.typ !== "access") throw new Error("wrong token type");
     } catch {
       return reply.status(401).send({ error: "Unauthorized" });
     }

@@ -4,12 +4,17 @@ import { useAuth } from "../auth/AuthContext";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
 function buildWindowsXml(ssid: string): string {
+  const safe = escapeXml(ssid);
   return `<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
-  <name>${ssid}</name>
+  <name>${safe}</name>
   <SSIDConfig>
-    <SSID><name>${ssid}</name></SSID>
+    <SSID><name>${safe}</name></SSID>
   </SSIDConfig>
   <connectionType>ESS</connectionType>
   <connectionMode>auto</connectionMode>

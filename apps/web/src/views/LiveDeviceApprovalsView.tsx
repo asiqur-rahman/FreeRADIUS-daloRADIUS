@@ -450,7 +450,7 @@ export function LiveDeviceApprovalsView() {
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3 text-xs text-zinc-500">
-        Approval decisions force a live reauthentication attempt when the device is already online, so VLAN or access policy changes can take effect without waiting for the user to notice.
+        Approval decisions force a live reauthentication attempt when the device is already online, so policy changes take effect without waiting for the user to reconnect.
       </div>
 
       {selectedUser && (

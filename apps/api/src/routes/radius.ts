@@ -429,7 +429,6 @@ const radiusRoutes: FastifyPluginAsync = async (app) => {
       username: string;
       mac: string;
       nasIp: string;
-      vlan?: string;
     };
   }>("/post-auth", async (req, reply) => {
     const { username, mac, nasIp } = req.body;
