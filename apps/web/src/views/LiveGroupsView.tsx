@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Layers, Loader2, Plus, Save, Shield, Trash2 } from "lucide-react";
+import { Layers, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import type { CreateGroupAttributeRequest, GroupAttribute, GroupSummary } from "@app/shared";
 import {
   createGroup,
@@ -10,12 +10,6 @@ import {
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { PageHelp } from "../components/PageHelp";
-
-const VLAN_ATTRIBUTE_KEYS = new Set([
-  "tunnel-type",
-  "tunnel-medium-type",
-  "tunnel-private-group-id",
-]);
 
 const DEFAULT_ATTRIBUTE_FORM: CreateGroupAttributeRequest = {
   attribute: "",
@@ -30,10 +24,6 @@ function attrKey(name: string): string {
 
 function findAttribute(group: GroupSummary, name: string): GroupAttribute | undefined {
   return group.attributes.find((attribute) => attrKey(attribute.attribute) === attrKey(name));
-}
-
-function groupVlan(group: GroupSummary): string {
-  return findAttribute(group, "Tunnel-Private-Group-ID")?.value ?? "";
 }
 
 function sessionTimeout(group: GroupSummary): string | null {
@@ -58,6 +48,27 @@ export function LiveGroupsView() {
     void load().catch((err: Error) => setError(err.message));
   }, [load]);
 
+  const GROUP_TEMPLATES = [
+    { name: "Staff",  description: "Employees" },
+    { name: "Family", description: "Family members" },
+    { name: "Guest",  description: "Guest access" },
+  ];
+
+  const createFromTemplate = async (tpl: typeof GROUP_TEMPLATES[number]) => {
+    if (!token) return;
+    setBusyKey(`tpl:${tpl.name}`);
+    setError(null);
+    try {
+      await createGroup(token, { name: tpl.name, description: tpl.description });
+      setNotice(`${tpl.name} group created.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to create group");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!token) return;
@@ -71,45 +82,6 @@ export function LiveGroupsView() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create group");
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const saveVlan = async (group: GroupSummary, vlanId: string) => {
-    if (!token) return;
-    setBusyKey(`vlan:${group.id}`);
-    setError(null);
-    try {
-      const existing = group.attributes.filter((attribute) => VLAN_ATTRIBUTE_KEYS.has(attrKey(attribute.attribute)));
-      for (const attribute of existing) {
-        await deleteGroupAttribute(token, group.id, attribute.id);
-      }
-      const trimmed = vlanId.trim();
-      if (trimmed) {
-        await createGroupAttribute(token, group.id, {
-          attribute: "Tunnel-Type",
-          op: ":=",
-          value: "13",
-          kind: "reply",
-        });
-        await createGroupAttribute(token, group.id, {
-          attribute: "Tunnel-Medium-Type",
-          op: ":=",
-          value: "6",
-          kind: "reply",
-        });
-        await createGroupAttribute(token, group.id, {
-          attribute: "Tunnel-Private-Group-ID",
-          op: ":=",
-          value: trimmed,
-          kind: "reply",
-        });
-      }
-      setNotice(trimmed ? `Updated VLAN ${trimmed} for ${group.name}.` : `Cleared explicit VLAN policy for ${group.name}.`);
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiCallError ? err.payload.message : "Unable to update VLAN policy");
     } finally {
       setBusyKey(null);
     }
@@ -151,14 +123,28 @@ export function LiveGroupsView() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold text-white">Groups & Policy</h2>
-            <PageHelp title="Groups & Policy" description="Policy groups define what network a user lands on after successful authentication. Each group maps to RADIUS reply attributes that FreeRADIUS returns to the NAS — primarily VLAN assignment and session limits. All changes sync to radgroupreply and radusergroup instantly." tips={["VLAN is assigned via Tunnel-Type=VLAN, Tunnel-Medium-Type=IEEE-802, Tunnel-Private-Group-Id", "Session-Timeout sets how many seconds a device stays connected before forced reauthentication", "If a user belongs to multiple groups, the group with the lowest priority number wins"]} />
+            <PageHelp title="Groups & Policy" description="Policy groups define which RADIUS reply attributes FreeRADIUS returns to the NAS after successful authentication. Attributes include session limits, bandwidth policies, or any custom RADIUS AVP. All changes sync to radgroupreply and radusergroup instantly." tips={["Session-Timeout sets how many seconds a device stays connected before forced reauthentication", "Add any RADIUS reply attribute supported by your NAS — consult your AP vendor's documentation", "If a user belongs to multiple groups, the group with the lowest priority number wins"]} />
           </div>
-          <p className="mt-0.5 text-sm text-zinc-500">Per-group VLAN assignment and live RADIUS reply attributes.</p>
+          <p className="mt-0.5 text-sm text-zinc-500">RADIUS reply attributes applied to approved devices on authentication.</p>
         </div>
-        <button onClick={() => setShowAdd((show) => !show)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-500">
-          <Plus className="h-4 w-4" />
-          New Group
-        </button>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {GROUP_TEMPLATES.map((tpl) => (
+            <button
+              key={tpl.name}
+              onClick={() => void createFromTemplate(tpl)}
+              disabled={!!busyKey}
+              title={tpl.description}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+            >
+              {busyKey === `tpl:${tpl.name}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 text-amber-400" />}
+              {tpl.name}
+            </button>
+          ))}
+          <button onClick={() => setShowAdd((show) => !show)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-500">
+            <Plus className="h-4 w-4" />
+            New Group
+          </button>
+        </div>
       </div>
 
       {error && <div className="rounded-lg border border-rose-900 bg-rose-950/20 p-3 text-sm text-rose-300">{error}</div>}
@@ -185,13 +171,12 @@ export function LiveGroupsView() {
         </form>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {groups.map((group) => (
           <GroupCard
             key={group.id}
             group={group}
             busyKey={busyKey}
-            onSaveVlan={saveVlan}
             onAddAttribute={addAttribute}
             onDeleteAttribute={removeAttribute}
           />
@@ -204,22 +189,15 @@ export function LiveGroupsView() {
 function GroupCard({
   group,
   busyKey,
-  onSaveVlan,
   onAddAttribute,
   onDeleteAttribute,
 }: {
   group: GroupSummary;
   busyKey: string | null;
-  onSaveVlan: (group: GroupSummary, vlanId: string) => Promise<void>;
   onAddAttribute: (groupId: string, body: CreateGroupAttributeRequest) => Promise<void>;
   onDeleteAttribute: (groupId: string, attribute: GroupAttribute) => Promise<void>;
 }) {
-  const [vlan, setVlan] = useState(groupVlan(group));
   const [attributeForm, setAttributeForm] = useState<CreateGroupAttributeRequest>(DEFAULT_ATTRIBUTE_FORM);
-
-  useEffect(() => {
-    setVlan(groupVlan(group));
-  }, [group]);
 
   const submitAttribute = async (event: FormEvent) => {
     event.preventDefault();
@@ -241,45 +219,14 @@ function GroupCard({
 
       <p className="mb-4 text-xs text-zinc-400">{group.description || "No description"}</p>
 
-      <div className="grid grid-cols-3 gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500">VLAN</div>
-          <div className="mt-1 text-xl font-semibold text-white">{groupVlan(group) || "-"}</div>
-        </div>
+      <div className="grid grid-cols-2 gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-500">Session Timeout</div>
-          <div className="mt-1 text-xl font-semibold text-white">{sessionTimeout(group) || "-"}</div>
+          <div className="mt-1 text-xl font-semibold text-white">{sessionTimeout(group) || "—"}</div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-zinc-500">Reply Attributes</div>
           <div className="mt-1 text-xl font-semibold text-white">{group.attributes.filter((attribute) => attribute.kind === "reply").length}</div>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-        <div className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-100">
-          <Shield className="h-4 w-4 text-emerald-400" />
-          VLAN policy
-        </div>
-        <p className="mb-3 text-xs text-zinc-500">Approved devices in this group inherit this VLAN through the REST authorize hook.</p>
-        <div className="flex gap-2">
-          <input
-            type="number"
-            min={1}
-            max={4094}
-            value={vlan}
-            onChange={(event) => setVlan(event.target.value)}
-            placeholder="e.g. 20"
-            className="w-32 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white"
-          />
-          <button
-            onClick={() => void onSaveVlan(group, vlan)}
-            disabled={busyKey === `vlan:${group.id}`}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
-          >
-            {busyKey === `vlan:${group.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save VLAN
-          </button>
         </div>
       </div>
 

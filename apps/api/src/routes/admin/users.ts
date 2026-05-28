@@ -65,6 +65,7 @@ const ListQuery = z.object({
 
 const include = {
   groups: { include: { group: true } },
+  devices: { select: { id: true, mac: true, label: true, status: true } },
 } satisfies Prisma.UserInclude;
 
 type UserWithGroups = Prisma.UserGetPayload<{ include: typeof include }>;
@@ -83,6 +84,7 @@ function toSummary(u: UserWithGroups): UserSummary {
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
     createdAt: u.createdAt.toISOString(),
     groups: u.groups.map((g) => ({ id: g.group.id, name: g.group.name })),
+    devices: u.devices.map((d) => ({ id: d.id, mac: d.mac, label: d.label, status: d.status })),
   };
 }
 

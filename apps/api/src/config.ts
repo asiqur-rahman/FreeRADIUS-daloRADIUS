@@ -68,6 +68,16 @@ const schema = z.object({
   DEVICE_CERT_SUBJECT_STATE: z.string().transform(v => v.trim() || undefined).optional(),
   DEVICE_CERT_SUBJECT_LOCALITY: z.string().transform(v => v.trim() || undefined).optional(),
 
+  // Path to the FreeRADIUS EAP CA certificate (ca.pem).
+  // Mounted from infra/freeradius/raddb/certs — served to users for WiFi setup.
+  RADIUS_CA_CERT_PATH: z.string().transform(v => v.trim() || undefined).optional(),
+
+  // When true (default), non-approved devices are rejected at RADIUS authorize
+  // time rather than being quarantined on a separate VLAN.
+  // Set to false only if your network infrastructure properly isolates
+  // the quarantine VLAN and you want a captive-portal style onboarding.
+  DEVICE_APPROVAL_REQUIRED: envBoolean.default(true),
+
   // ── FreeRADIUS rlm_rest hook ─────────────────────────────────────
   // Shared secret checked on every /radius/* request (X-Radius-Hook-Secret).
   RADIUS_HOOK_SECRET: z.string().min(16).default("dev-hook-secret-change-in-prod"),
@@ -76,10 +86,6 @@ const schema = z.object({
   // stored in radius_allowed_ips (admin Settings → RADIUS IP Guard).
   // Set to false for local dev / lab convenience.
   RADIUS_IP_GUARD_ENABLED: envBoolean.default(false),
-
-  // VLAN IDs returned to the AP via Tunnel-Private-Group-ID.
-  QUARANTINE_VLAN_ID: z.coerce.number().int().positive().default(99),
-  NORMAL_VLAN_ID:     z.coerce.number().int().positive().default(10),
 
   // ── Telegram bot ────────────────────────────────────────────────
   // Get BOT_TOKEN from @BotFather.  Get ADMIN_CHAT_ID by messaging @userinfobot.

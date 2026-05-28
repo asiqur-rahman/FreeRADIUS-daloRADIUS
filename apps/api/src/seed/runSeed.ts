@@ -17,38 +17,35 @@ function writeSeedLine(message: string) {
 }
 
 export async function runSeed() {
+  // No Session-Timeout on Staff or Family — sessions are unlimited unless
+  // the admin explicitly adds the attribute via the group editor.
   const staff = await prisma.group.upsert({
     where: { name: "Staff" },
     update: {},
     create: {
       name: "Staff",
-      description: "Default employee group - VLAN 20",
+      description: "Default employee group",
       isDefault: true,
-      attributes: {
-        create: [
-          { attribute: "Tunnel-Type", op: ":=", value: "VLAN", kind: "reply" },
-          { attribute: "Tunnel-Medium-Type", op: ":=", value: "IEEE-802", kind: "reply" },
-          { attribute: "Tunnel-Private-Group-Id", op: ":=", value: "20", kind: "reply" },
-          { attribute: "Session-Timeout", op: ":=", value: "28800", kind: "reply" },
-        ],
-      },
     },
   });
 
+  // Guest is unlimited by default too.  Admin can add Session-Timeout or set
+  // validUntil on individual guest user accounts.
   const guest = await prisma.group.upsert({
     where: { name: "Guest" },
     update: {},
     create: {
       name: "Guest",
-      description: "Captive guest network - VLAN 99",
-      attributes: {
-        create: [
-          { attribute: "Tunnel-Type", op: ":=", value: "VLAN", kind: "reply" },
-          { attribute: "Tunnel-Medium-Type", op: ":=", value: "IEEE-802", kind: "reply" },
-          { attribute: "Tunnel-Private-Group-Id", op: ":=", value: "99", kind: "reply" },
-          { attribute: "Session-Timeout", op: ":=", value: "3600", kind: "reply" },
-        ],
-      },
+      description: "Guest access",
+    },
+  });
+
+  const family = await prisma.group.upsert({
+    where: { name: "Family" },
+    update: {},
+    create: {
+      name: "Family",
+      description: "Family / home members",
     },
   });
 
@@ -147,6 +144,7 @@ export async function runSeed() {
   await prisma.$transaction(async (tx) => {
     await syncGroupToRadius(tx, staff.id);
     await syncGroupToRadius(tx, guest.id);
+    await syncGroupToRadius(tx, family.id);
     await syncUserToRadius(tx, admin.id);
     await syncUserToRadius(tx, testUser.id);
     if (nas) {

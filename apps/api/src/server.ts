@@ -24,6 +24,7 @@ import adminSessionRoutes from "./routes/admin/sessions.js";
 import adminOperationRoutes from "./routes/admin/operations.js";
 import adminDeviceRoutes from "./routes/admin/devices.js";
 import adminRadiusAllowlistRoutes from "./routes/admin/radiusAllowlist.js";
+import adminPlatformSettingsRoutes from "./routes/admin/platformSettings.js";
 import mfaRoutes from "./routes/mfa.js";
 import radiusRoutes from "./routes/radius.js";
 import eventsRoutes from "./routes/events.js";
@@ -49,7 +50,7 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
   await app.register(cors, {
     origin: c.CORS_ORIGINS,
     credentials: true,
-    methods: ["GET", "POST", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   });
   await app.register(rateLimit, {
     max: 300,
@@ -59,7 +60,7 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
   await app.register(errorHandler);
   await app.register(authPlugin);
   app.addHook("preHandler", async (req) => {
-    if (!["POST", "PATCH", "DELETE"].includes(req.method)) return;
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return;
     const origin = req.headers.origin;
     if (origin && !c.CORS_ORIGINS.includes(origin)) {
       throw Forbidden("Cross-origin state change rejected");
@@ -83,6 +84,7 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
       await api.register(adminOperationRoutes, { prefix: "/admin" });
       await api.register(adminDeviceRoutes, { prefix: "/admin" });
       await api.register(adminRadiusAllowlistRoutes, { prefix: "/admin" });
+      await api.register(adminPlatformSettingsRoutes, { prefix: "/admin" });
       // FreeRADIUS rlm_rest hook — internal, protected by shared secret.
       await api.register(radiusRoutes, { prefix: "/radius" });
       // Server-Sent Events stream for admin dashboards.

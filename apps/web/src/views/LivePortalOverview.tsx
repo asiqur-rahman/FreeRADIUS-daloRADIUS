@@ -52,11 +52,11 @@ export function LivePortalOverview() {
             <div className={`w-2 h-2 rounded-full ${active ? "bg-white animate-pulse" : "bg-stone-400"}`} />
             <span className="text-xs font-semibold uppercase tracking-wider">{active ? "Connected" : "No active Wi-Fi session"}</span>
           </div>
-          <h2 className="text-3xl font-semibold tracking-tight" style={{ fontFamily: "ui-serif, Georgia, serif" }}>
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ fontFamily: "ui-serif, Georgia, serif" }}>
             {active ? "You're online." : "You're currently offline."}
           </h2>
           {active && (
-            <div className="mt-6 grid grid-cols-4 gap-4">
+            <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <div><div className="text-[10px] uppercase tracking-wider text-white/70">Device</div><div className="text-base font-semibold mt-1">{active.deviceLabel || active.callingStationId}</div></div>
               <div><div className="text-[10px] uppercase tracking-wider text-white/70">Access Point</div><div className="text-base font-semibold mt-1">{active.nasName || active.nasIp}</div></div>
               <div><div className="text-[10px] uppercase tracking-wider text-white/70">IP Address</div><div className="text-base font-semibold mt-1 font-mono">{active.framedIpAddress || "-"}</div></div>
@@ -68,7 +68,7 @@ export function LivePortalOverview() {
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl px-4 py-3 text-sm">{error}</div>}
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-stone-200 rounded-2xl p-5">
           <ShieldCheck className="w-5 h-5 text-emerald-600 mb-3" />
           <div className="text-2xl font-semibold text-stone-900">{user?.mfaEnabled ? "Enabled" : "Optional"}</div>

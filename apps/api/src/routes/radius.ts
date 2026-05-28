@@ -57,19 +57,11 @@ interface AuthorizeBody {
   certEmail?: string;
 }
 
-function vlanReply(vlanId: number): FlatRlmResponse {
-  return {
-    "reply:Tunnel-Type":              "13",
-    "reply:Tunnel-Medium-Type":       "6",
-    "reply:Tunnel-Private-Group-ID":  String(vlanId),
-  };
-}
-
 function attributeKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
-/** Normalize a group attribute name/value to the canonical VLAN triple. */
+/** Normalise a group attribute name/value to its flat rlm_rest key. */
 function normalizeGroupAttr(name: string, value: string): [replyKey: string, val: string] {
   const key = attributeKey(name);
   if (key === "tunnel-type")
@@ -78,11 +70,19 @@ function normalizeGroupAttr(name: string, value: string): [replyKey: string, val
     return ["reply:Tunnel-Medium-Type", /^ieee-802$/i.test(value) ? "6" : value];
   if (key === "tunnel-private-group-id")
     return ["reply:Tunnel-Private-Group-ID", value];
-  // Other reply attributes — pass through with reply: prefix.
   return [`reply:${name}`, value];
 }
 
-function replyFromGroups(groups: UserGroupReplyShape[], fallbackVlanId: number): FlatRlmResponse {
+/**
+ * Build the RADIUS reply for an approved user from their group attributes.
+ *
+ * No VLAN is injected by default — if a group has Tunnel-* attributes those
+ * are forwarded as-is, but no fallback VLAN is added for flat networks that
+ * do not use 802.1Q VLAN tagging.  Admins who DO need per-group VLANs simply
+ * add the three Tunnel-* attributes to the group in the dashboard and they
+ * will appear here.
+ */
+function replyFromGroups(groups: UserGroupReplyShape[]): FlatRlmResponse {
   const merged = new Map<string, string>();
 
   for (const membership of [...groups].sort((a, b) => a.priority - b.priority)) {
@@ -95,24 +95,20 @@ function replyFromGroups(groups: UserGroupReplyShape[], fallbackVlanId: number):
 
   const out: FlatRlmResponse = Object.fromEntries(merged);
 
-  // Ensure the VLAN triple is present.
-  if (!merged.has("reply:Tunnel-Private-Group-ID")) {
-    Object.assign(out, vlanReply(fallbackVlanId));
-  } else {
+  // If any VLAN attribute was supplied, complete the mandatory triple.
+  if (merged.has("reply:Tunnel-Private-Group-ID")) {
     if (!merged.has("reply:Tunnel-Type"))        out["reply:Tunnel-Type"]        = "13";
     if (!merged.has("reply:Tunnel-Medium-Type")) out["reply:Tunnel-Medium-Type"] = "6";
   }
+
   return out;
 }
 
 function replyForDevice(
   groups: UserGroupReplyShape[],
   status: "pending" | "approved" | "rejected" | "new",
-  c: ReturnType<typeof config>,
 ): FlatRlmResponse {
-  return status === "approved"
-    ? replyFromGroups(groups, c.NORMAL_VLAN_ID)
-    : vlanReply(c.QUARANTINE_VLAN_ID);
+  return status === "approved" ? replyFromGroups(groups) : {};
 }
 
 async function createPendingApproval(deviceId: string, request: {
@@ -121,17 +117,28 @@ async function createPendingApproval(deviceId: string, request: {
   mac: string;
   nasIp: string;
 }) {
-  await prisma.deviceApproval.create({
+  const approval = await prisma.deviceApproval.create({
     data: { deviceId, status: "pending" },
   });
 
-  await sendApprovalRequest({
+  // Send the Telegram notification and store message IDs for bidirectional sync.
+  const tgRef = await sendApprovalRequest({
     deviceId,
     username: request.username,
     fullName: request.fullName,
     mac: request.mac,
     nasIp: request.nasIp,
   });
+
+  if (tgRef) {
+    await prisma.deviceApproval.update({
+      where: { id: approval.id },
+      data: {
+        telegramChatId:    BigInt(tgRef.chatId),
+        telegramMessageId: tgRef.messageId,
+      },
+    });
+  }
 }
 
 async function authorizePeap(
@@ -174,7 +181,7 @@ async function authorizePeap(
   const normalizedMac = normalizeMac(body.mac);
   const device = await prisma.userDevice.findFirst({
     where: { userId: user.id, mac: normalizedMac },
-    select: { status: true },
+    select: { id: true, status: true },
   });
 
   if (device?.status === "rejected") {
@@ -182,12 +189,43 @@ async function authorizePeap(
     return reply.status(403).send({ error: "Device rejected" });
   }
 
+  const isNew = !device;
   const status = device?.status ?? "new";
-  const replyAttrs = replyForDevice(user.groups, status, c);
-  const vlanId = replyAttrs["reply:Tunnel-Private-Group-ID"]
-    ?? String(status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
 
-  req.log.info({ username, mac: normalizedMac, deviceStatus: status, vlanId }, "radius.authorize peap");
+  if (c.DEVICE_APPROVAL_REQUIRED && status !== "approved") {
+    if (isNew) {
+      // Register the device as pending so the admin can see and approve it.
+      const pending = await prisma.userDevice.upsert({
+        where: { userId_mac: { userId: user.id, mac: normalizedMac } },
+        create: { userId: user.id, mac: normalizedMac, status: "pending", lastSeenAt: new Date() },
+        update: { lastSeenAt: new Date() },
+      });
+      createPendingApproval(pending.id, {
+        username: user.username,
+        fullName: user.fullName,
+        mac: normalizedMac,
+        nasIp: body.nasIp,
+      }).catch((err) => {
+        req.log.error({ err, deviceId: pending.id }, "radius.peap.pending_notify failed");
+      });
+      emitPlatformEvent("device.pending", {
+        deviceId: pending.id,
+        username: user.username,
+        fullName: user.fullName,
+        mac: normalizedMac,
+        nasIp: body.nasIp,
+        isNew: true,
+      });
+      req.log.info({ username, mac: normalizedMac, deviceId: pending.id }, "radius.authorize new_device_registered_rejected");
+    } else {
+      req.log.info({ username, mac: normalizedMac, deviceStatus: status }, "radius.authorize device_pending_rejected");
+    }
+    return reply.status(403).send({ error: "Device pending approval" });
+  }
+
+  const replyAttrs = replyForDevice(user.groups, status);
+
+  req.log.info({ username, mac: normalizedMac, deviceStatus: status }, "radius.authorize peap");
 
   // Flat rlm_rest 3.2.x response — "control:X" keys → control list,
   // "reply:X" keys → reply list.  Plain string values, operator defaults to :=
@@ -320,9 +358,7 @@ async function authorizeEapTls(
     });
   }
 
-  const replyAttrs = replyForDevice(device.user.groups, device.status, c);
-  const vlanId = replyAttrs["reply:Tunnel-Private-Group-ID"]
-    ?? String(device.status === "approved" ? c.NORMAL_VLAN_ID : c.QUARANTINE_VLAN_ID);
+  const replyAttrs = replyForDevice(device.user.groups, device.status);
 
   req.log.info(
     {
@@ -332,13 +368,11 @@ async function authorizeEapTls(
       authMethod: "eap-tls",
       certCommonName: certificate.commonName,
       certFingerprint: certificate.fingerprint,
-      vlanId,
     },
     "radius.authorize eap-tls",
   );
 
   // EAP-TLS: no password check needed — cert already validated by FreeRADIUS.
-  // Only VLAN reply attrs are needed.
   const response: FlatRlmResponse = { ...replyAttrs };
   return reply.status(200).send(response);
 }

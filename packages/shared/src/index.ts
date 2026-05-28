@@ -24,6 +24,7 @@ export interface UserSummary {
   lastLoginAt: string | null;
   createdAt: string;
   groups: Array<{ id: string; name: string }>;
+  devices: Array<{ id: string; mac: string; label: string | null; status: DeviceStatus }>;
 }
 
 export interface LoginRequest {

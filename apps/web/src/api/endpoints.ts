@@ -51,6 +51,11 @@ export function createUser(token: string, body: CreateUserRequest) {
 export function updateUser(token: string, id: string, body: UpdateUserRequest) {
   return api<UserSummary>(`${v1}/admin/users/${id}`, { method: "PATCH", token, body });
 }
+export function resetUserPassword(token: string, id: string, newPassword: string) {
+  return api<{ ok: boolean }>(`${v1}/admin/users/${id}/reset-password`, {
+    method: "POST", token, body: { newPassword },
+  });
+}
 
 // ── Groups ───────────────────────────────────────────────────────────
 export function listGroups(token: string) {
@@ -242,6 +247,35 @@ export function updateRadiusAllowedIp(
 }
 export function deleteRadiusAllowedIp(token: string, id: string) {
   return api<void>(`${v1}/admin/radius-allowlist/${id}`, { method: "DELETE", token });
+}
+
+// -- Platform settings -------------------------------------------------------
+export interface PlatformSettingsResponse {
+  telegram: {
+    botToken:    string | null;  // masked on read ("xxxx…xxxx")
+    adminChatId: string | null;
+    configured:  boolean;
+  };
+}
+
+export function getPlatformSettings(token: string) {
+  return api<PlatformSettingsResponse>(`${v1}/admin/settings/platform`, { token });
+}
+
+export function updatePlatformSettings(
+  token: string,
+  body: {
+    telegram?: {
+      botToken?:    string | null;
+      adminChatId?: string | null;
+    };
+  },
+) {
+  return api<PlatformSettingsResponse>(`${v1}/admin/settings/platform`, {
+    method: "PUT",
+    token,
+    body,
+  });
 }
 
 // -- Account security --------------------------------------------------------

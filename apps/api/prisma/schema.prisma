@@ -150,13 +150,16 @@ model UserDevice {
 //   an admin approves or rejects via Telegram or the dashboard.
 
 model DeviceApproval {
-  id          String       @id @default(cuid())
-  deviceId    String
-  requestedAt DateTime     @default(now())
-  decidedAt   DateTime?
-  decidedBy   String?      // admin user id — null for Telegram decisions
-  status      DeviceStatus @default(pending)
-  notes       String?      @db.VarChar(500)
+  id                String       @id @default(cuid())
+  deviceId          String
+  requestedAt       DateTime     @default(now())
+  decidedAt         DateTime?
+  decidedBy         String?      // admin user id — null for Telegram decisions
+  status            DeviceStatus @default(pending)
+  notes             String?      @db.VarChar(500)
+  // Telegram message reference — stored so web-side decisions can edit the message
+  telegramChatId    BigInt?
+  telegramMessageId Int?
 
   device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   admin  User?      @relation("ApprovalDecisions", fields: [decidedBy], references: [id])
@@ -310,6 +313,20 @@ model RadiusAllowedIp {
   createdAt DateTime @default(now())
 
   @@map("radius_allowed_ips")
+}
+
+// ── Platform settings (DB-backed admin configuration) ───────────────
+//   Key-value store for runtime-configurable settings.
+//   Keys use dot notation: "telegram.bot_token", "telegram.admin_chat_id".
+//   Sensitive values are stored as-is (secrets management is out of scope);
+//   the API masks them on read.
+
+model PlatformSetting {
+  key       String   @id @db.VarChar(128)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
 }
 
 // ── M2M tokens (Phase 1: scaffold only, not yet exposed) ────────────

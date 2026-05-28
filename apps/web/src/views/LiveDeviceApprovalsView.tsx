@@ -29,6 +29,7 @@ import {
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useSSE } from "../hooks/useSSE";
+import { playNotificationSound } from "../hooks/useNotificationSound";
 import { PageHelp } from "../components/PageHelp";
 
 type DeviceTab = "pending" | "devices" | "history";
@@ -131,10 +132,10 @@ export function LiveDeviceApprovalsView() {
     void load();
   }, [load]);
 
-  // Real-time refresh via SSE — auto-reload when a device connects or is decided
+  // Real-time refresh via SSE — auto-reload and play a ting on new events
   useSSE(token, {
-    "device.pending": () => { void load(); },
-    "device.decided": () => { void load(); },
+    "device.pending": () => { playNotificationSound(); void load(); },
+    "device.decided": () => { playNotificationSound(); void load(); },
   });
 
   const counts = useMemo(() => {

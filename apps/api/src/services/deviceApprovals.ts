@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { audit } from "../lib/audit.js";
 import { emitPlatformEvent } from "../lib/events.js";
 import { NotFound } from "../lib/errors.js";
+import { notifyTelegramDecision } from "../lib/telegram.js";
 import { disconnectUserSessions } from "./sessions.js";
 
 type DecisionStatus = Exclude<DeviceStatus, "pending">;
@@ -169,6 +170,19 @@ export async function decideDevice(opts: DecideDeviceOptions): Promise<DeviceDec
     status: opts.status,
     source: opts.source,
   });
+
+  // When decided via the web admin, edit the Telegram approval message so
+  // both channels stay in sync.
+  if (opts.source === "admin_api") {
+    notifyTelegramDecision({
+      deviceId:    outcome.device.id,
+      status:      opts.status,
+      deciderName: opts.actorLabel ?? "admin",
+    }).catch((err) => {
+      // Non-fatal — don't block the response if Telegram is unreachable.
+      void err;
+    });
+  }
 
   return {
     device: outcome.device,

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { listAdminDevices } from '../api/endpoints';
 import { useSSE } from '../hooks/useSSE';
+import { playNotificationSound } from '../hooks/useNotificationSound';
 import { useAuth } from '../auth/AuthContext';
 import { LiveNasView } from '../views/LiveNasView';
 import { LiveSessionsView } from '../views/LiveSessionsView';
@@ -702,9 +703,9 @@ export default function AdminDashboard() {
 
   useEffect(() => { void refreshPendingCount(); }, [refreshPendingCount]);
 
-  // Update badge in real-time via SSE
+  // Update badge in real-time via SSE; play ting on new device connection
   useSSE(token, {
-    'device.pending': () => void refreshPendingCount(),
+    'device.pending': () => { playNotificationSound(); void refreshPendingCount(); },
     'device.decided': () => void refreshPendingCount(),
   });
 

@@ -149,7 +149,7 @@ export function SelfServiceDevices() {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input
               value={label}
               onChange={(event) => setLabel(event.target.value)}
@@ -211,7 +211,7 @@ export function SelfServiceDevices() {
                     <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${statusStyle(device.status)}`}>{device.status}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-4 text-xs text-stone-500">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone-500">
                   <span className="font-mono uppercase">{device.mac}</span>
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{lastSeenLabel(device.lastSeenAt)}</span>
                 </div>

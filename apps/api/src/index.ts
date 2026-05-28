@@ -26,6 +26,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
   await app.listen({ host: c.API_HOST, port: c.API_PORT });
+  // Start polling after listen so DB is fully ready and settings can be read.
   startTelegramPolling();
 }
 

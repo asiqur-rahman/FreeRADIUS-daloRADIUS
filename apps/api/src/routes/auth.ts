@@ -34,7 +34,8 @@ function toSummary(u: Awaited<ReturnType<typeof loadUserWithGroups>>): UserSumma
     mfaEnabled: u.mfaEnabled,
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
     createdAt: u.createdAt.toISOString(),
-    groups: u.groups.map((g) => ({ id: g.group.id, name: g.group.name })),
+    groups:  u.groups.map((g) => ({ id: g.group.id, name: g.group.name })),
+    devices: [],  // not loaded at login; admin users list loads full device info
   };
 }
 

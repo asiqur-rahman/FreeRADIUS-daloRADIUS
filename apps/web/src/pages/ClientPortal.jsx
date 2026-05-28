@@ -73,7 +73,7 @@ function OverviewTab({ live = true }) {
           <h2 className="text-3xl font-semibold mb-1 tracking-tight" style={{fontFamily: 'ui-serif, Georgia, serif'}}>You're online.</h2>
           <p className="text-emerald-50 text-sm">Authenticated via PEAP-MSCHAPv2 · MacBook Pro 16"</p>
 
-          <div className="mt-6 grid grid-cols-4 gap-4">
+          <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <div className="text-[10px] uppercase tracking-wider text-emerald-100/80">Network</div>
               <div className="text-base font-semibold mt-1">CorpNet</div>
@@ -95,7 +95,7 @@ function OverviewTab({ live = true }) {
       </div>
 
       {/* Quick info grid */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-stone-200 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <ShieldCheck className="w-5 h-5 text-emerald-600"/>
@@ -123,9 +123,9 @@ function OverviewTab({ live = true }) {
       </div>
 
       {/* Two column */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Recent activity */}
-        <div className="col-span-2 bg-white border border-stone-200 rounded-2xl p-6">
+        <div className="sm:col-span-2 bg-white border border-stone-200 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-base font-semibold text-stone-900" style={{fontFamily: 'ui-serif, Georgia, serif'}}>Recent activity</h3>
             <button className="text-xs text-stone-500 hover:text-stone-900 flex items-center gap-1">View all<ArrowRight className="w-3 h-3"/></button>
@@ -444,7 +444,7 @@ export default function ClientPortal() {
       <div className="relative">
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-sm border-b border-stone-200 sticky top-0 z-10">
-          <div className="max-w-6xl mx-auto px-8 h-16 flex items-center justify-between">
+          <div className="max-w-6xl mx-auto px-4 sm:px-8 h-14 sm:h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-stone-900 flex items-center justify-center">
                 <Wifi className="w-5 h-5 text-white" strokeWidth={2.5}/>
@@ -455,15 +455,15 @@ export default function ClientPortal() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button className="p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-900 transition-colors">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <button className="hidden sm:flex p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-900 transition-colors">
                 <HelpCircle className="w-5 h-5"/>
               </button>
-              <button className="relative p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-900 transition-colors">
+              <button className="hidden sm:flex relative p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-900 transition-colors">
                 <Bell className="w-5 h-5"/>
                 <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-500 rounded-full"/>
               </button>
-              <div className="h-6 w-px bg-stone-200 mx-1"/>
+              <div className="hidden sm:block h-6 w-px bg-stone-200 mx-1"/>
               <div className="flex items-center gap-2.5 px-2 py-1 rounded-lg hover:bg-stone-100 cursor-pointer">
                 <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-rose-500 flex items-center justify-center text-xs font-semibold text-white">
                   {initials}
@@ -480,16 +480,16 @@ export default function ClientPortal() {
         </header>
 
         {/* Welcome */}
-        <div className="max-w-6xl mx-auto px-8 pt-10 pb-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-10 pb-4 sm:pb-6">
           <div className="text-sm text-stone-500 mb-1">Good afternoon,</div>
-          <h1 className="text-3xl font-semibold text-stone-900 tracking-tight" style={{fontFamily: 'ui-serif, Georgia, serif'}}>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-stone-900 tracking-tight" style={{fontFamily: 'ui-serif, Georgia, serif'}}>
             {firstName}.
           </h1>
         </div>
 
         {/* Tabs */}
-        <div className="max-w-6xl mx-auto px-8 pb-6">
-          <div className="inline-flex p-1.5 bg-stone-100 rounded-2xl gap-1">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 pb-4 sm:pb-6">
+          <div className="flex overflow-x-auto p-1.5 bg-stone-100 rounded-2xl gap-1" style={{scrollbarWidth:'none'}}>
             <Tab active={tab==='overview'} onClick={()=>setTab('overview')} icon={Activity} label="Overview"/>
             <Tab active={tab==='devices'} onClick={()=>setTab('devices')} icon={Smartphone} label="Devices"/>
             <Tab active={tab==='security'} onClick={()=>setTab('security')} icon={Shield} label="Security"/>
@@ -498,7 +498,7 @@ export default function ClientPortal() {
         </div>
 
         {/* Content */}
-        <main className="max-w-6xl mx-auto px-8 pb-16">
+        <main className="max-w-6xl mx-auto px-4 sm:px-8 pb-16">
           {tab === 'overview' && <OverviewTab/>}
           {tab === 'devices' && <DevicesTab/>}
           {tab === 'security' && <SecurityTab/>}

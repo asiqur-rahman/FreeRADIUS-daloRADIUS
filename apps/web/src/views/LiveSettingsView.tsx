@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   Plus,
+  RefreshCw,
   Shield,
   ShieldCheck,
   Trash2,
@@ -13,11 +18,14 @@ import {
 import type { EapCertificate } from "@app/shared";
 import {
   type RadiusAllowedIp,
+  type PlatformSettingsResponse,
   listCerts,
   listRadiusAllowlist,
   createRadiusAllowedIp,
   updateRadiusAllowedIp,
   deleteRadiusAllowedIp,
+  getPlatformSettings,
+  updatePlatformSettings,
 } from "../api/endpoints";
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -269,6 +277,174 @@ function IpAllowlistPanel({ token }: { token: string }) {
   );
 }
 
+// ── Telegram settings panel ────────────────────────────────────────────────
+
+function TelegramPanel({ token }: { token: string }) {
+  const [settings, setSettings] = useState<PlatformSettingsResponse | null>(null);
+  const [botToken,    setBotToken]    = useState("");
+  const [adminChatId, setAdminChatId] = useState("");
+  const [showToken, setShowToken]     = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [notice, setNotice]           = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const s = await getPlatformSettings(token);
+      setSettings(s);
+      // Pre-fill with the masked token so the user can see it's set
+      setBotToken(s.telegram.botToken ?? "");
+      setAdminChatId(s.telegram.adminChatId ?? "");
+    } catch (err) {
+      setNotice({
+        ok: false,
+        text: err instanceof ApiCallError ? err.payload.message : "Failed to load settings",
+      });
+    }
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setNotice(null);
+    try {
+      const s = await updatePlatformSettings(token, {
+        telegram: {
+          botToken:    botToken.trim() || null,
+          adminChatId: adminChatId.trim() || null,
+        },
+      });
+      setSettings(s);
+      setBotToken(s.telegram.botToken ?? "");
+      setAdminChatId(s.telegram.adminChatId ?? "");
+      setNotice({ ok: true, text: s.telegram.configured ? "Telegram configured — polling restarted." : "Telegram credentials cleared." });
+    } catch (err) {
+      setNotice({
+        ok: false,
+        text: err instanceof ApiCallError ? err.payload.message : "Failed to save settings",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setBotToken("");
+    setAdminChatId("");
+    setSaving(true);
+    setNotice(null);
+    try {
+      await updatePlatformSettings(token, {
+        telegram: { botToken: null, adminChatId: null },
+      });
+      setSettings(await getPlatformSettings(token));
+      setNotice({ ok: true, text: "Telegram credentials cleared." });
+    } catch (err) {
+      setNotice({
+        ok: false,
+        text: err instanceof ApiCallError ? err.payload.message : "Failed to clear",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+      <div className="mb-4 flex items-center gap-3">
+        <Bot className="h-5 w-5 text-sky-400" />
+        <div>
+          <h3 className="font-semibold text-white">Telegram Notifications</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Get real-time device approval requests and decide directly from Telegram.
+          </p>
+        </div>
+        {settings?.telegram.configured && (
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-emerald-700/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-300">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Active
+          </span>
+        )}
+      </div>
+
+      {notice && (
+        <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${
+          notice.ok
+            ? "border-emerald-900 bg-emerald-950/20 text-emerald-300"
+            : "border-rose-900 bg-rose-950/20 text-rose-300"
+        }`}>
+          {notice.text}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Bot Token
+            <span className="ml-1 text-zinc-600">(from @BotFather)</span>
+          </label>
+          <div className="relative">
+            <input
+              type={showToken ? "text" : "password"}
+              value={botToken}
+              onChange={(e) => setBotToken(e.target.value)}
+              placeholder="1234567890:AABCDefGHIjklmnopqrstUVWXyz…"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 pr-10 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-600 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setShowToken((v) => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            >
+              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+            Admin Chat ID
+            <span className="ml-1 text-zinc-600">(message @userinfobot to get yours)</span>
+          </label>
+          <input
+            type="text"
+            value={adminChatId}
+            onChange={(e) => setAdminChatId(e.target.value)}
+            placeholder="123456789"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-600 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Save & restart bot
+          </button>
+          {settings?.telegram.configured && (
+            <button
+              onClick={() => void handleClear()}
+              disabled={saving}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-rose-300 disabled:opacity-60"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3 text-xs text-zinc-500 space-y-1">
+        <p><span className="text-zinc-400 font-medium">Setup:</span> Message <code className="text-zinc-300">@BotFather</code> → <code className="text-zinc-300">/newbot</code> → copy the token above.</p>
+        <p>Send any message to the bot, then get your Chat ID from <code className="text-zinc-300">@userinfobot</code>.</p>
+        <p>Approvals made via Telegram are instantly reflected in this dashboard, and vice versa.</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Settings view ─────────────────────────────────────────────────────
 
 export function LiveSettingsView() {
@@ -288,6 +464,7 @@ export function LiveSettingsView() {
         </p>
       </div>
 
+      <TelegramPanel token={token} />
       <CertPanel token={token} />
       <IpAllowlistPanel token={token} />
     </div>

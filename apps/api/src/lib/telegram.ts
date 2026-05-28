@@ -2,18 +2,80 @@
 //  Telegram bot — approval notifications for new device connections.
 //
 //  Uses long-polling (getUpdates) — no public webhook URL required.
-//  Call startTelegramPolling() once at server startup.
 //
-//  Required env vars:
-//    TELEGRAM_BOT_TOKEN       from @BotFather
-//    TELEGRAM_ADMIN_CHAT_ID   your personal chat ID (message @userinfobot)
+//  Configuration priority (highest → lowest):
+//    1. platform_settings table (admin panel)
+//    2. TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID env vars
+//
+//  Call startTelegramPolling() once at server startup.
+//  Call reloadTelegramPolling() after saving new settings — it stops
+//  the current loop and restarts with the fresh credentials.
 // ─────────────────────────────────────────────────────────────────────
 
 import pino from "pino";
+import { prisma } from "../db.js";
 import { config } from "../config.js";
 import { decideDevice } from "../services/deviceApprovals.js";
 
 const log = pino({ name: "telegram" });
+
+// ── DB-backed settings ─────────────────────────────────────────────
+
+const SETTING_TOKEN   = "telegram.bot_token";
+const SETTING_CHAT_ID = "telegram.admin_chat_id";
+
+export interface TelegramSettings {
+  botToken:    string | null;
+  adminChatId: string | null;
+}
+
+/** Read settings from DB, fall back to env. */
+export async function getTelegramSettings(): Promise<TelegramSettings> {
+  const rows = await prisma.platformSetting.findMany({
+    where: { key: { in: [SETTING_TOKEN, SETTING_CHAT_ID] } },
+  });
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+
+  const c = config();
+  return {
+    botToken:    map.get(SETTING_TOKEN)   || c.TELEGRAM_BOT_TOKEN    || null,
+    adminChatId: map.get(SETTING_CHAT_ID) || c.TELEGRAM_ADMIN_CHAT_ID || null,
+  };
+}
+
+/** Persist new Telegram credentials to the DB. */
+export async function saveTelegramSettings(settings: {
+  botToken?: string | null;
+  adminChatId?: string | null;
+}): Promise<void> {
+  const ops: Promise<unknown>[] = [];
+
+  if (settings.botToken !== undefined) {
+    if (settings.botToken) {
+      ops.push(prisma.platformSetting.upsert({
+        where: { key: SETTING_TOKEN },
+        create: { key: SETTING_TOKEN, value: settings.botToken },
+        update: { value: settings.botToken },
+      }));
+    } else {
+      ops.push(prisma.platformSetting.deleteMany({ where: { key: SETTING_TOKEN } }));
+    }
+  }
+
+  if (settings.adminChatId !== undefined) {
+    if (settings.adminChatId) {
+      ops.push(prisma.platformSetting.upsert({
+        where: { key: SETTING_CHAT_ID },
+        create: { key: SETTING_CHAT_ID, value: settings.adminChatId },
+        update: { value: settings.adminChatId },
+      }));
+    } else {
+      ops.push(prisma.platformSetting.deleteMany({ where: { key: SETTING_CHAT_ID } }));
+    }
+  }
+
+  await Promise.all(ops);
+}
 
 // ── Telegram HTTP helpers ──────────────────────────────────────────
 
@@ -42,7 +104,8 @@ async function tgCall<T = unknown>(
 
 /**
  * Send an approval request message to the admin with Approve/Reject buttons.
- * Does nothing if Telegram credentials are not configured.
+ * Returns the chat_id and message_id so they can be stored for later editing.
+ * Returns null if Telegram credentials are not configured.
  */
 export async function sendApprovalRequest(opts: {
   deviceId: string;
@@ -50,9 +113,9 @@ export async function sendApprovalRequest(opts: {
   fullName: string | null;
   mac: string;
   nasIp: string;
-}): Promise<void> {
-  const c = config();
-  if (!c.TELEGRAM_BOT_TOKEN || !c.TELEGRAM_ADMIN_CHAT_ID) return;
+}): Promise<{ chatId: number; messageId: number } | null> {
+  const { botToken, adminChatId } = await getTelegramSettings();
+  if (!botToken || !adminChatId) return null;
 
   const displayName = opts.fullName ? `${opts.username} (${opts.fullName})` : opts.username;
   const text = [
@@ -65,43 +128,121 @@ export async function sendApprovalRequest(opts: {
     "Approve to grant normal access, or reject to block this device.",
   ].join("\n");
 
-  await tgCall(c.TELEGRAM_BOT_TOKEN, "sendMessage", {
-    chat_id: c.TELEGRAM_ADMIN_CHAT_ID,
-    text,
-    parse_mode: "Markdown",
-    reply_markup: {
-      inline_keyboard: [[
-        { text: "✅ Approve", callback_data: `approve:${opts.deviceId}` },
-        { text: "❌ Reject",  callback_data: `reject:${opts.deviceId}`  },
-      ]],
+  const result = await tgCall<{ result: { message_id: number; chat: { id: number } } }>(
+    botToken,
+    "sendMessage",
+    {
+      chat_id:      adminChatId,
+      text,
+      parse_mode:   "Markdown",
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "✅ Approve", callback_data: `approve:${opts.deviceId}` },
+          { text: "❌ Reject",  callback_data: `reject:${opts.deviceId}`  },
+        ]],
+      },
     },
+  );
+
+  return {
+    chatId:    result.result.chat.id,
+    messageId: result.result.message_id,
+  };
+}
+
+/**
+ * Edit the approval message after a web-side decision so Telegram stays in sync.
+ * Looks up stored chat/message IDs from the pending DeviceApproval.
+ */
+export async function notifyTelegramDecision(opts: {
+  deviceId: string;
+  status:   "approved" | "rejected";
+  deciderName: string;
+}): Promise<void> {
+  const { botToken, adminChatId } = await getTelegramSettings();
+  if (!botToken || !adminChatId) return;
+
+  // Find the pending approval that has a Telegram message reference
+  const approval = await prisma.deviceApproval.findFirst({
+    where: {
+      deviceId:          opts.deviceId,
+      telegramMessageId: { not: null },
+    },
+    orderBy: { requestedAt: "desc" },
   });
+  if (!approval?.telegramMessageId || !approval.telegramChatId) return;
+
+  const device = await prisma.userDevice.findUnique({
+    where: { id: opts.deviceId },
+    include: { user: { select: { username: true, fullName: true } } },
+  });
+  if (!device) return;
+
+  const emoji = opts.status === "approved" ? "✅" : "❌";
+  const displayName = device.user.fullName
+    ? `${device.user.username} (${device.user.fullName})`
+    : device.user.username;
+
+  const replyText = [
+    `${emoji} *${opts.status.toUpperCase()}* — via dashboard`,
+    `\`${device.mac}\` - ${displayName}`,
+    `_Decided by ${opts.deciderName}_`,
+  ].join("\n");
+
+  const chatId = Number(approval.telegramChatId);
+  await tgCall(botToken, "editMessageText", {
+    chat_id:    chatId,
+    message_id: approval.telegramMessageId,
+    text:       replyText,
+    parse_mode: "Markdown",
+  }).catch(() =>
+    tgCall(botToken, "sendMessage", {
+      chat_id: adminChatId, text: replyText, parse_mode: "Markdown",
+    }),
+  );
 }
 
 // ── Long-polling loop ──────────────────────────────────────────────
 
 let pollingActive = false;
+let pollingToken: string | null = null;
 
 export function startTelegramPolling(): void {
-  const c = config();
-  if (!c.TELEGRAM_BOT_TOKEN || !c.TELEGRAM_ADMIN_CHAT_ID) {
-    log.info("telegram disabled — TELEGRAM_BOT_TOKEN not set");
+  void _startAsync();
+}
+
+async function _startAsync(): Promise<void> {
+  if (pollingActive) return;
+
+  const { botToken, adminChatId } = await getTelegramSettings();
+  if (!botToken || !adminChatId) {
+    log.info("telegram disabled — credentials not configured");
     return;
   }
-  if (pollingActive) return;
+
   pollingActive = true;
-  void pollLoop(c.TELEGRAM_BOT_TOKEN, c.TELEGRAM_ADMIN_CHAT_ID);
+  pollingToken  = botToken;
+  void pollLoop(botToken, adminChatId);
   log.info("telegram polling started");
 }
 
 export function stopTelegramPolling(): void {
   pollingActive = false;
+  pollingToken  = null;
+}
+
+/** Stop the current loop and restart with fresh credentials from the DB. */
+export async function reloadTelegramPolling(): Promise<void> {
+  stopTelegramPolling();
+  // Give the loop one iteration to notice pollingActive = false
+  await sleep(200);
+  void _startAsync();
 }
 
 async function pollLoop(token: string, adminChatId: string): Promise<void> {
   let offset = 0;
 
-  while (pollingActive) {
+  while (pollingActive && pollingToken === token) {
     try {
       const res = await tgCall<{ result: TgUpdate[] }>(token, "getUpdates", {
         offset,
@@ -122,6 +263,8 @@ async function pollLoop(token: string, adminChatId: string): Promise<void> {
       await sleep(5_000);
     }
   }
+
+  log.info("telegram polling stopped");
 }
 
 // ── Callback handler ───────────────────────────────────────────────
@@ -136,20 +279,21 @@ async function handleCallback(
 
   if (!cb.data) return;
   const colonIdx = cb.data.indexOf(":");
-  const action = cb.data.slice(0, colonIdx);
+  const action   = cb.data.slice(0, colonIdx);
   const deviceId = cb.data.slice(colonIdx + 1);
 
   if (!deviceId || (action !== "approve" && action !== "reject")) return;
 
-  const newStatus = action === "approve" ? ("approved" as const) : ("rejected" as const);
-  const emoji = action === "approve" ? "✅" : "❌";
+  const newStatus  = action === "approve" ? ("approved" as const) : ("rejected" as const);
+  const emoji      = action === "approve" ? "✅" : "❌";
+  const deciderName = cb.from.first_name ?? "Telegram admin";
 
   const decision = await decideDevice({
     deviceId,
-    status: newStatus,
-    actorLabel: cb.from.first_name,
-    source: "telegram",
-    notes: `${newStatus} via Telegram by ${cb.from.first_name}`,
+    status:     newStatus,
+    actorLabel: deciderName,
+    source:     "telegram",
+    notes:      `${newStatus} via Telegram by ${deciderName}`,
   });
 
   const displayName = decision.device.user.fullName
@@ -166,7 +310,6 @@ async function handleCallback(
         : "_No active session needed reauthentication._",
   ].join("\n");
 
-  // Edit the original message (replaces the buttons with the decision).
   if (cb.message) {
     await tgCall(token, "editMessageText", {
       chat_id:    cb.message.chat.id,
@@ -174,7 +317,6 @@ async function handleCallback(
       text:       replyText,
       parse_mode: "Markdown",
     }).catch(() =>
-      // Fall back to a new message if the original was deleted.
       tgCall(token, "sendMessage", {
         chat_id: adminChatId, text: replyText, parse_mode: "Markdown",
       }),
@@ -184,11 +326,11 @@ async function handleCallback(
   log.info(
     {
       deviceId,
-      mac: decision.device.mac,
-      username: decision.device.user.username,
+      mac:             decision.device.mac,
+      username:        decision.device.user.username,
       newStatus,
-      reauthAttempts: decision.disconnectAttempts.length,
-      alreadyApplied: decision.alreadyApplied,
+      reauthAttempts:  decision.disconnectAttempts.length,
+      alreadyApplied:  decision.alreadyApplied,
     },
     "telegram.device_decision",
   );
@@ -202,10 +344,10 @@ interface TgUpdate {
 }
 
 interface TgCallbackQuery {
-  id: string;
-  from: { first_name: string };
+  id:       string;
+  from:     { first_name: string };
   message?: { message_id: number; chat: { id: number } };
-  data?: string;
+  data?:    string;
 }
 
 function sleep(ms: number): Promise<void> {

@@ -5,6 +5,8 @@ import { useAuth } from "./auth/AuthContext";
 import { Login } from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import ClientPortal from "./pages/ClientPortal.jsx";
+import { PwaUpdateBanner } from "./components/PwaUpdateBanner";
+import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
 
 export function App() {
   const { status, user } = useAuth();
@@ -19,26 +21,34 @@ export function App() {
 
   if (status === "anonymous" || !user) {
     return (
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+        <PwaUpdateBanner />
+        <PwaInstallPrompt />
+      </>
     );
   }
 
   return (
-    <Routes>
-      {user.role === "admin" ? (
-        <>
-          <Route path="/admin/*" element={<AdminDashboard />} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
-        </>
-      ) : (
-        <>
-          <Route path="/portal/*" element={<ClientPortal />} />
-          <Route path="*" element={<Navigate to="/portal" replace />} />
-        </>
-      )}
-    </Routes>
+    <>
+      <Routes>
+        {user.role === "admin" ? (
+          <>
+            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </>
+        ) : (
+          <>
+            <Route path="/portal/*" element={<ClientPortal />} />
+            <Route path="*" element={<Navigate to="/portal" replace />} />
+          </>
+        )}
+      </Routes>
+      <PwaUpdateBanner />
+      <PwaInstallPrompt />
+    </>
   );
 }
