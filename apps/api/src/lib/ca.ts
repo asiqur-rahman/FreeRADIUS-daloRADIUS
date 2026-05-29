@@ -21,6 +21,7 @@ import { join }           from "node:path";
 import { X509Certificate } from "node:crypto";
 import { prisma }         from "../db.js";
 import { config }         from "../config.js";
+import { getCertSettings } from "./certSettings.js";
 import { ServiceUnavailable } from "./errors.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -114,7 +115,6 @@ function runOpenSsl(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
 }
 
 async function generateAndSaveCa(): Promise<CaBundle> {
-  const c      = config();
   const tmpDir = await fs.mkdtemp(join(tmpdir(), "radius-ca-"));
 
   try {
@@ -122,9 +122,10 @@ async function generateAndSaveCa(): Promise<CaBundle> {
     const certPath = join(tmpDir, "ca.pem");
     const cnfPath  = join(tmpDir, "ca.cnf");
 
-    const cn  = "RadiusNexus Auto CA";
-    const org = c.DEVICE_CERT_SUBJECT_ORGANIZATION ?? "RadiusOps";
-    const ou  = c.DEVICE_CERT_SUBJECT_ORGANIZATIONAL_UNIT ?? "Managed WiFi";
+    const certSettings = await getCertSettings();
+    const cn  = "RadiusOps Auto CA";
+    const org = certSettings.organization;
+    const ou  = certSettings.organizationalUnit;
 
     await fs.writeFile(cnfPath, [
       "[req]",

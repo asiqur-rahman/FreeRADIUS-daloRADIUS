@@ -147,7 +147,9 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
     const a = document.createElement("a");
     a.href = url;
     a.download = `${user.username}-wifi.p12`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -262,6 +264,7 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
             <div className="grid grid-cols-2 gap-3">
               <Field label="Role">
                 <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+                  <option value="guest">Guest</option>
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                 </Select>

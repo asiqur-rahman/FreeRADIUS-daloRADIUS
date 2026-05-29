@@ -18,9 +18,10 @@ import {
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
+  CheckCheck,
   X,
 } from "lucide-react";
-import type { NasClient, NasVendor, Site } from "@app/shared";
+import type { FreeRadiusReloadResult, NasClient, NasVendor, Site } from "@app/shared";
 import { useAuth } from "../auth/AuthContext";
 import {
   createNas,
@@ -45,9 +46,14 @@ export function LiveNasView() {
   const [revealedSecret, setRevealedSecret] = useState<{ nasname: string; secret: string } | null>(
     null,
   );
+  // "restartNeeded" — shown when no auto-reload command is configured
   const [restartNeeded, setRestartNeeded] = useState(
     () => localStorage.getItem("radius_nas_restart_needed") === "true",
   );
+  // "reloadOk" — auto-dismiss success banner
+  const [reloadOk, setReloadOk] = useState(false);
+  // "reloadErr" — auto-reload was attempted but failed
+  const [reloadErr, setReloadErr] = useState<string | null>(null);
   const [cmdCopied, setCmdCopied] = useState(false);
 
   const RESTART_CMD = "docker compose restart freeradius";
@@ -60,6 +66,29 @@ export function LiveNasView() {
   function dismissRestart() {
     localStorage.removeItem("radius_nas_restart_needed");
     setRestartNeeded(false);
+  }
+
+  /** Handle the _reload result returned by NAS mutation endpoints. */
+  function handleReloadResult(r: FreeRadiusReloadResult | undefined) {
+    if (!r) {
+      // Old API or unknown — show manual banner as fallback
+      markRestartNeeded();
+      return;
+    }
+    if (r.triggered && r.success) {
+      // Auto-reload succeeded — clear any lingering manual banner
+      dismissRestart();
+      setReloadErr(null);
+      setReloadOk(true);
+      setTimeout(() => setReloadOk(false), 4000);
+    } else if (r.triggered && !r.success) {
+      // Reload was attempted but failed
+      setReloadErr(r.error ?? r.stderr ?? "FreeRADIUS reload failed — restart manually.");
+      markRestartNeeded();
+    } else {
+      // Not triggered: no command configured → show manual banner
+      markRestartNeeded();
+    }
   }
 
   const reload = useCallback(async () => {
@@ -88,14 +117,52 @@ export function LiveNasView() {
         <PageHelp title="NAS Clients" description="Network Access Servers (NAS) are the access points, switches, or controllers that forward RADIUS authentication requests to this server. Each NAS must have a registered IP address and a shared secret that exactly matches the device's own RADIUS client configuration." tips={["The shared secret must match exactly what is configured on the AP or switch — a mismatch causes all authentication requests from that device to silently fail", "CoA port (default 3799) is used to send Disconnect-Requests and policy-change packets to live sessions on the NAS", "NAS entries are stored in the 'nas' Postgres table and read by FreeRADIUS via the SQL module — no SSH or config file editing required"]} />
       </div>
 
+      {/* ── Auto-reload succeeded ─────────────────────────────── */}
+      {reloadOk && (
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          <CheckCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+          <span className="flex-1">FreeRADIUS reloaded automatically — changes are now live.</span>
+          <button
+            onClick={() => setReloadOk(false)}
+            className="shrink-0 text-emerald-500/60 hover:text-emerald-300 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Auto-reload failed ────────────────────────────────── */}
+      {reloadErr && (
+        <div className="flex items-start gap-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-rose-200 mb-0.5">FreeRADIUS auto-reload failed</p>
+            <p className="text-xs text-rose-400/80 break-words">{reloadErr}</p>
+            <p className="text-xs text-rose-400/60 mt-1">
+              Check the reload command in <strong className="text-rose-300">Settings → FreeRADIUS Auto-Reload</strong>,
+              then restart manually.
+            </p>
+          </div>
+          <button
+            onClick={() => setReloadErr(null)}
+            className="shrink-0 text-rose-500/60 hover:text-rose-300 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Manual restart banner (no reload command configured) ── */}
       {restartNeeded && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
           <div className="flex-1 min-w-0">
             <p className="font-medium text-amber-200 mb-1">FreeRADIUS restart required</p>
             <p className="text-xs text-amber-400/80 mb-2">
-              NAS client changes are stored in the database but FreeRADIUS reads them only at
-              startup. Restart the container to apply the changes:
+              NAS changes saved to the database. FreeRADIUS needs a reload to pick them up.
+              Configure an auto-reload command in{" "}
+              <strong className="text-amber-300">Settings → FreeRADIUS Auto-Reload</strong> to
+              automate this, or restart manually:
             </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 px-2.5 py-1.5 rounded bg-zinc-950/60 border border-amber-500/20 text-xs font-mono text-amber-200 truncate">
@@ -143,7 +210,7 @@ export function LiveNasView() {
           try {
             const r = await rotateNasSecret(token, id);
             setRevealedSecret({ nasname: r.nasname, secret: r.newSecret });
-            markRestartNeeded();
+            handleReloadResult(r._reload);
             void reload();
           } catch (e) {
             setErr(e instanceof ApiCallError ? e.payload.message : "Failed to rotate secret");
@@ -153,8 +220,8 @@ export function LiveNasView() {
           if (!token) return;
           if (!window.confirm("Delete this NAS? It will stop accepting RADIUS requests.")) return;
           try {
-            await deleteNas(token, id);
-            markRestartNeeded();
+            const r = await deleteNas(token, id);
+            handleReloadResult(r._reload);
             void reload();
           } catch (e) {
             setErr(e instanceof ApiCallError ? e.payload.message : "Failed to delete NAS");
@@ -163,8 +230,8 @@ export function LiveNasView() {
         onToggleEnabled={async (nas) => {
           if (!token) return;
           try {
-            await updateNas(token, nas.id, { enabled: !nas.enabled });
-            markRestartNeeded();
+            const r = await updateNas(token, nas.id, { enabled: !nas.enabled });
+            handleReloadResult(r._reload);
             void reload();
           } catch (e) {
             setErr(e instanceof ApiCallError ? e.payload.message : "Update failed");
@@ -176,10 +243,10 @@ export function LiveNasView() {
         <CreateModal
           sites={sites}
           onClose={() => setCreating(false)}
-          onCreated={(generated) => {
+          onCreated={(generated, _reload) => {
             setCreating(false);
             if (generated) setRevealedSecret(generated);
-            markRestartNeeded();
+            handleReloadResult(_reload);
             void reload();
           }}
         />
@@ -328,7 +395,10 @@ function CreateModal({
 }: {
   sites: Site[];
   onClose: () => void;
-  onCreated: (revealedSecret: { nasname: string; secret: string } | null) => void;
+  onCreated: (
+    revealedSecret: { nasname: string; secret: string } | null,
+    reload: FreeRadiusReloadResult | undefined,
+  ) => void;
 }) {
   const { token } = useAuth();
   const [form, setForm] = useState({
@@ -367,6 +437,7 @@ function CreateModal({
         created._generatedSecret
           ? { nasname: created.nasname, secret: created._generatedSecret }
           : null,
+        created._reload,
       );
     } catch (e) {
       setErr(e instanceof ApiCallError ? e.payload.message : "Failed to create NAS");

@@ -3,7 +3,7 @@ import {
   Wifi, Smartphone, Laptop, Tablet, Shield, Key, Clock, MapPin, ChevronRight,
   AlertCircle, Plus, Trash2, Edit3, Eye, EyeOff, Download,
   HelpCircle, Bell, LogOut, User, ArrowRight, Activity,
-  Info, ShieldCheck, X, Apple, Monitor
+  Info, ShieldCheck, X, Apple, Monitor, BookOpen
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { SelfServiceDevices } from '../views/SelfServiceDevices';
@@ -11,6 +11,7 @@ import { LivePortalOverview } from '../views/LivePortalOverview';
 import { LiveSecurityView } from '../views/LiveSecurityView';
 import { LiveProfileView } from '../views/LiveProfileView';
 import { LiveWifiCertView } from '../views/LiveWifiCertView';
+import { LiveConnectionGuideView } from '../views/LiveConnectionGuideView';
 
 // ─── DATA ──────────────────────────────────────────────────────────────────
 const me = {
@@ -487,7 +488,7 @@ export default function ClientPortal() {
 
         {/* Welcome */}
         <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-10 pb-4 sm:pb-6">
-          <div className="text-sm text-stone-500 mb-1">Good afternoon,</div>
+          <div className="text-sm text-stone-500 mb-1">{(() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; })()},</div>
           <h1 className="text-2xl sm:text-3xl font-semibold text-stone-900 tracking-tight" style={{fontFamily: 'ui-serif, Georgia, serif'}}>
             {firstName}.
           </h1>
@@ -499,6 +500,7 @@ export default function ClientPortal() {
             <Tab active={tab==='overview'} onClick={()=>setTab('overview')} icon={Activity} label="Overview"/>
             <Tab active={tab==='devices'} onClick={()=>setTab('devices')} icon={Smartphone} label="Devices"/>
             <Tab active={tab==='wifi'} onClick={()=>setTab('wifi')} icon={Wifi} label="WiFi Cert"/>
+            <Tab active={tab==='connect'} onClick={()=>setTab('connect')} icon={BookOpen} label="Connect Guide"/>
             <Tab active={tab==='security'} onClick={()=>setTab('security')} icon={Shield} label="Security"/>
             <Tab active={tab==='profile'} onClick={()=>setTab('profile')} icon={User} label="Profile"/>
           </div>
@@ -506,11 +508,12 @@ export default function ClientPortal() {
 
         {/* Content */}
         <main className="max-w-6xl mx-auto px-4 sm:px-8 pb-16">
-          {tab === 'overview' && <OverviewTab/>}
-          {tab === 'devices' && <DevicesTab/>}
-          {tab === 'wifi' && <WifiCertTab/>}
-          {tab === 'security' && <SecurityTab/>}
-          {tab === 'profile' && <ProfileTab/>}
+          {tab === 'overview'  && <OverviewTab/>}
+          {tab === 'devices'   && <DevicesTab/>}
+          {tab === 'wifi'      && <WifiCertTab/>}
+          {tab === 'connect'   && <LiveConnectionGuideView/>}
+          {tab === 'security'  && <SecurityTab/>}
+          {tab === 'profile'   && <ProfileTab/>}
         </main>
       </div>
     </div>

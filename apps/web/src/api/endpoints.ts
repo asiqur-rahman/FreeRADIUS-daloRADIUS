@@ -4,6 +4,7 @@
 import type {
   AdminDeviceSummary,
   CaInfo,
+  CertSubjectSettings,
   CreateGroupAttributeRequest,
   CreateGroupRequest,
   CreateNasRequest,
@@ -13,6 +14,7 @@ import type {
   AuditLogEntry,
   DeviceApprovalEntry,
   DeviceDecisionRequest,
+  FreeRadiusReloadResult,
   SessionDisconnectResponse,
   EapCertificate,
   GroupSummary,
@@ -27,13 +29,17 @@ import type {
   ProvisionUserCertResponse,
   Site,
   UpdateCaRequest,
+  UpdateCertSettingsRequest,
   UpdateDeviceRequest,
   UserClientCert,
   UserDevice,
   UserSummary,
   UpdateUserRequest,
 } from "@app/shared";
-export type { CaInfo, PlatformSettingsResponse };
+export type { CaInfo, CertSubjectSettings, FreeRadiusReloadResult, PlatformSettingsResponse };
+
+// Convenience: NAS mutation responses include an optional auto-reload result.
+type WithReload<T> = T & { _reload?: FreeRadiusReloadResult };
 import { api } from "./client";
 
 const v1 = "/api/v1";
@@ -52,6 +58,9 @@ export function createUser(token: string, body: CreateUserRequest) {
 }
 export function updateUser(token: string, id: string, body: UpdateUserRequest) {
   return api<UserSummary>(`${v1}/admin/users/${id}`, { method: "PATCH", token, body });
+}
+export function deleteUser(token: string, id: string) {
+  return api<{ ok: true }>(`${v1}/admin/users/${id}`, { method: "DELETE", token });
 }
 // ── Self-service certs (user portal) ─────────────────────────────────
 export function listMyCerts(token: string) {
@@ -100,16 +109,16 @@ export function listNas(token: string) {
   return api<Paginated<NasClient>>(`${v1}/admin/nas?pageSize=100`, { token });
 }
 export function createNas(token: string, body: CreateNasRequest) {
-  return api<NasClient>(`${v1}/admin/nas`, { method: "POST", token, body });
+  return api<WithReload<NasClient>>(`${v1}/admin/nas`, { method: "POST", token, body });
 }
 export function updateNas(token: string, id: string, body: Partial<CreateNasRequest>) {
-  return api<NasClient>(`${v1}/admin/nas/${id}`, { method: "PATCH", token, body });
+  return api<WithReload<NasClient>>(`${v1}/admin/nas/${id}`, { method: "PATCH", token, body });
 }
 export function deleteNas(token: string, id: string) {
-  return api<{ ok: true }>(`${v1}/admin/nas/${id}`, { method: "DELETE", token });
+  return api<WithReload<{ ok: true }>>(`${v1}/admin/nas/${id}`, { method: "DELETE", token });
 }
 export function rotateNasSecret(token: string, id: string) {
-  return api<{ id: string; nasname: string; newSecret: string }>(
+  return api<WithReload<{ id: string; nasname: string; newSecret: string }>>(
     `${v1}/admin/nas/${id}/rotate-secret`,
     { method: "POST", token },
   );
@@ -123,6 +132,15 @@ export function listSites(token: string) {
 // ── EAP certs ────────────────────────────────────────────────────────
 export function listCerts(token: string) {
   return api<EapCertificate[]>(`${v1}/admin/certs`, { token });
+}
+export function addCert(token: string, body: { pem: string; activate?: boolean; notes?: string | null }) {
+  return api<EapCertificate>(`${v1}/admin/certs`, { method: "POST", token, body });
+}
+export function activateCert(token: string, id: string) {
+  return api<EapCertificate>(`${v1}/admin/certs/${id}/activate`, { method: "POST", token });
+}
+export function deleteCert(token: string, id: string) {
+  return api<{ ok: true }>(`${v1}/admin/certs/${id}`, { method: "DELETE", token });
 }
 
 // -- Device approvals -------------------------------------------------------
@@ -257,12 +275,27 @@ export function updatePlatformSettings(
   body: {
     telegram?: { botToken?: string | null; adminChatId?: string | null };
     ca?: UpdateCaRequest;
+    certSettings?: UpdateCertSettingsRequest;
+    freeradius?: { reloadCommand?: string | null };
   },
 ) {
   return api<PlatformSettingsResponse>(`${v1}/admin/settings/platform`, {
     method: "PUT",
     token,
     body,
+  });
+}
+
+// ── FreeRADIUS management ─────────────────────────────────────────────
+export function triggerFreeRadiusReload(token: string) {
+  return api<FreeRadiusReloadResult>(`${v1}/admin/freeradius/reload`, { method: "POST", token });
+}
+export function getFreeRadiusConfig(token: string) {
+  return api<{ reloadCommand: string | null; configured: boolean }>(`${v1}/admin/freeradius/config`, { token });
+}
+export function saveFreeRadiusConfig(token: string, body: { reloadCommand?: string | null }) {
+  return api<{ reloadCommand: string | null; configured: boolean }>(`${v1}/admin/freeradius/config`, {
+    method: "PUT", token, body,
   });
 }
 

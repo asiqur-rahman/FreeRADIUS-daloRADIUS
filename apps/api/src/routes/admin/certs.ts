@@ -32,6 +32,7 @@ interface CertView {
   subject: string;
   issuer: string | null;
   fingerprint: string;
+  fingerprintSha1: string | null;
   serial: string | null;
   issuedAt: string;
   expiresAt: string;
@@ -54,6 +55,7 @@ function toView(c: {
   subject: string;
   issuer: string | null;
   fingerprint: string;
+  fingerprintSha1: string | null;
   serial: string | null;
   issuedAt: Date;
   expiresAt: Date;
@@ -66,6 +68,7 @@ function toView(c: {
     subject: c.subject,
     issuer: c.issuer,
     fingerprint: c.fingerprint,
+    fingerprintSha1: c.fingerprintSha1,
     serial: c.serial,
     issuedAt: c.issuedAt.toISOString(),
     expiresAt: c.expiresAt.toISOString(),
@@ -100,9 +103,11 @@ const adminCerts: FastifyPluginAsync = async (app) => {
       });
     }
 
-    // Node's fingerprint props are colon-separated hex; we normalise to
-    // contiguous lowercase to keep the unique key compact.
-    const raw = createHash("sha256").update(parsed.raw).digest("hex");
+    // Compute both fingerprints from the DER bytes.
+    // SHA-256 is the primary unique key; SHA-1 is exposed for Windows WPA2-Enterprise
+    // "Trusted certificate thumbprints" (which only accepts SHA-1).
+    const raw       = createHash("sha256").update(parsed.raw).digest("hex");
+    const rawSha1   = createHash("sha1").update(parsed.raw).digest("hex");
 
     const created = await prisma.$transaction(async (tx) => {
       // De-dup on fingerprint.
@@ -126,13 +131,14 @@ const adminCerts: FastifyPluginAsync = async (app) => {
 
       const cert = await tx.eapCertificate.create({
         data: {
-          subject: parsed.subject,
-          issuer: parsed.issuer ?? null,
-          fingerprint: raw,
-          serial: parsed.serialNumber ?? null,
-          issuedAt: new Date(parsed.validFrom),
-          expiresAt: new Date(parsed.validTo),
-          notes: body.notes ?? null,
+          subject:         parsed.subject,
+          issuer:          parsed.issuer ?? null,
+          fingerprint:     raw,
+          fingerprintSha1: rawSha1,
+          serial:          parsed.serialNumber ?? null,
+          issuedAt:        new Date(parsed.validFrom),
+          expiresAt:       new Date(parsed.validTo),
+          notes:           body.notes ?? null,
         },
       });
 

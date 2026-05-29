@@ -52,7 +52,9 @@ function BundleDownloadPanel({
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -65,7 +67,9 @@ function BundleDownloadPanel({
     const a = document.createElement("a");
     a.href = url;
     a.download = "wifi-certificate.p12";
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -79,7 +83,7 @@ function BundleDownloadPanel({
           <div>
             <h3 className="font-semibold text-amber-900">Certificate ready — save it now</h3>
             <p className="text-xs text-amber-800 mt-1 leading-relaxed max-w-lg">
-              The private key will <strong>never be shown again</strong>. Download the .p12 file and note the password before closing this banner.
+              The <strong>.p12 file and password will never be shown again</strong> — save them now. The public cert (.pem) can be re-downloaded any time from the list below.
             </p>
           </div>
         </div>
@@ -366,7 +370,7 @@ export function LiveWifiCertView() {
           </button>
         </div>
         <p className="text-[11px] text-stone-400">
-          You can generate multiple certificates — useful for different devices or to replace a lost one. Revoke any you no longer need.
+          You can generate multiple certificates — useful for different devices or to replace a lost one. The public cert is always re-downloadable from the list below. The private key (inside the .p12) is shown only once at creation — keep it safe.
         </p>
       </div>
 
@@ -421,6 +425,25 @@ export function LiveWifiCertView() {
                     </div>
                   </div>
                   <CertStatusBadge cert={cert} />
+                  {cert.certPem && (
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([cert.certPem!], { type: "application/x-pem-file" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${cert.commonName}-cert.pem`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="p-2 hover:bg-indigo-50 rounded-lg text-stone-400 hover:text-indigo-600 transition-colors"
+                      title="Download certificate (.pem)"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  )}
                   {isActive && (
                     <button
                       onClick={() => handleRevoke(cert.id)}

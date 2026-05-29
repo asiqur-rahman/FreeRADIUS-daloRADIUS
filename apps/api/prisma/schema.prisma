@@ -22,6 +22,7 @@ datasource db {
 enum UserRole {
   admin
   user
+  guest
 }
 
 enum UserStatus {
@@ -83,7 +84,7 @@ model User {
   username    String     @unique @db.VarChar(64)
   email       String     @unique @db.VarChar(254)
   fullName    String?    @db.VarChar(120)
-  role        UserRole   @default(user)
+  role        UserRole   @default(guest)
   status      UserStatus @default(active)
   validFrom   DateTime?
   validUntil  DateTime?
@@ -285,11 +286,12 @@ model AuthEvent {
 //   exposes the active cert in the admin UI.
 
 model EapCertificate {
-  id          String    @id @default(cuid())
-  subject     String    @db.VarChar(255)
-  issuer      String?   @db.VarChar(255)
-  fingerprint String    @unique @db.VarChar(64) // sha256 lowercase hex
-  serial      String?   @db.VarChar(80)
+  id              String    @id @default(cuid())
+  subject         String    @db.VarChar(255)
+  issuer          String?   @db.VarChar(255)
+  fingerprint     String    @unique @db.VarChar(64)  // sha256 lowercase hex
+  fingerprintSha1 String?   @db.VarChar(40)          // sha1 hex — for Windows WPA2-Enterprise thumbprint
+  serial          String?   @db.VarChar(80)
   issuedAt    DateTime
   expiresAt   DateTime
   isActive    Boolean   @default(false)
@@ -340,6 +342,7 @@ model UserClientCert {
   userId      String
   fingerprint String    @unique @db.VarChar(64)
   commonName  String    @db.VarChar(255)
+  certPem     String?   @db.Text
   expiresAt   DateTime
   revokedAt   DateTime?
   notes       String?   @db.VarChar(500)

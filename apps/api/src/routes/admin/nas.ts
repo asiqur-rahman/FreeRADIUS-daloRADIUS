@@ -17,6 +17,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { audit } from "../../lib/audit.js";
 import { NotFound } from "../../lib/errors.js";
+import { reloadFreeRadius, getReloadCommand, saveReloadCommand } from "../../lib/freeradius.js";
 import { purgeNasFromRadius, syncNasToRadius } from "../../services/radiusPolicy.js";
 
 const VENDOR_TYPES = ["cisco", "aruba", "ubiquiti", "mikrotik", "meraki", "other"] as const;
@@ -134,8 +135,11 @@ const adminNas: FastifyPluginAsync = async (app) => {
       return nas;
     });
 
+    // Auto-reload FreeRADIUS (non-blocking; failure is non-fatal)
+    const _reload = await reloadFreeRadius();
+
     // Surface a one-time secret display warning the UI can show.
-    return { ...created, _generatedSecret: body.secret ? undefined : secret };
+    return { ...created, _generatedSecret: body.secret ? undefined : secret, _reload };
   });
 
   // PATCH /admin/nas/:id
@@ -183,7 +187,8 @@ const adminNas: FastifyPluginAsync = async (app) => {
       return nas;
     });
 
-    return updated;
+    const _reload = await reloadFreeRadius();
+    return { ...updated, _reload };
   });
 
   // POST /admin/nas/:id/rotate-secret
@@ -215,7 +220,8 @@ const adminNas: FastifyPluginAsync = async (app) => {
       return updated;
     });
 
-    return { id: nas.id, nasname: nas.nasname, newSecret };
+    const _reload = await reloadFreeRadius();
+    return { id: nas.id, nasname: nas.nasname, newSecret, _reload };
   });
 
   // DELETE /admin/nas/:id
@@ -239,7 +245,30 @@ const adminNas: FastifyPluginAsync = async (app) => {
       });
     });
 
-    return { ok: true };
+    const _reload = await reloadFreeRadius();
+    return { ok: true, _reload };
+  });
+
+  // POST /admin/freeradius/reload  — manual trigger from admin UI
+  app.post("/freeradius/reload", async () => {
+    const result = await reloadFreeRadius();
+    return result;
+  });
+
+  // GET  /admin/freeradius/config  — read current reload command
+  // PUT  /admin/freeradius/config  — save reload command
+  app.get("/freeradius/config", async () => {
+    const cmd = await getReloadCommand();
+    return { reloadCommand: cmd, configured: Boolean(cmd) };
+  });
+
+  app.put<{ Body: { reloadCommand?: string | null } }>("/freeradius/config", async (req) => {
+    const { reloadCommand } = z
+      .object({ reloadCommand: z.string().max(500).nullable().optional() })
+      .parse(req.body);
+    await saveReloadCommand(reloadCommand ?? null);
+    const cmd = await getReloadCommand();
+    return { reloadCommand: cmd, configured: Boolean(cmd) };
   });
 };
 

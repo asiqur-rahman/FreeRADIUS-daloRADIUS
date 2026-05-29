@@ -45,6 +45,7 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
       id:          c.id,
       fingerprint: c.fingerprint,
       commonName:  c.commonName,
+      certPem:     c.certPem ?? null,
       expiresAt:   c.expiresAt.toISOString(),
       revokedAt:   c.revokedAt?.toISOString() ?? null,
       notes:       c.notes,
@@ -67,12 +68,13 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
       pkcs12Password: body.pkcs12Password,
     });
 
-    // Store fingerprint — future EAP-TLS auth will match on this
+    // Store fingerprint + cert PEM (public cert only — private key is never stored)
     await prisma.userClientCert.create({
       data: {
         userId:      id,
         fingerprint: bundle.fingerprint,
         commonName:  bundle.commonName,
+        certPem:     bundle.certificatePem,
         expiresAt:   bundle.expiresAt,
         notes:       body.notes ?? null,
       },

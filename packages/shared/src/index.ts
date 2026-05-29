@@ -5,7 +5,7 @@
 //  browser. No Prisma imports, no Fastify imports, no DOM imports.
 // ─────────────────────────────────────────────────────────────────────
 
-export type UserRole = "admin" | "user";
+export type UserRole = "admin" | "user" | "guest";
 
 export type UserStatus = "pending" | "active" | "suspended" | "expired";
 
@@ -160,7 +160,10 @@ export interface EapCertificate {
   id: string;
   subject: string;
   issuer: string | null;
+  /** SHA-256 fingerprint (64 hex chars). */
   fingerprint: string;
+  /** SHA-1 fingerprint (40 hex chars). Used as the Windows WPA2-Enterprise "Trusted certificate thumbprint". */
+  fingerprintSha1: string | null;
   serial: string | null;
   issuedAt: string;
   expiresAt: string;
@@ -368,6 +371,8 @@ export interface UserClientCert {
   id: string;
   fingerprint: string;
   commonName: string;
+  /** Public certificate PEM — stored for re-download. Private key is never stored. */
+  certPem: string | null;
   expiresAt: string;
   revokedAt: string | null;
   notes: string | null;
@@ -402,6 +407,31 @@ export interface CaInfo {
   fingerprint: string | null;
 }
 
+/** X.509 subject fields stamped into every issued EAP-TLS client certificate. */
+export interface CertSubjectSettings {
+  /** How many days issued client certificates remain valid (1–397). */
+  validityDays:       number;
+  /** O= field — your organisation name. */
+  organization:       string;
+  /** OU= field — team or department. */
+  organizationalUnit: string;
+  /** C= field — ISO 3166-1 alpha-2 country code (e.g. "US", "GB", "BD"). */
+  country:            string | null;
+  /** ST= field — full state or province name. */
+  state:              string | null;
+  /** L= field — city or locality. */
+  locality:           string | null;
+}
+
+/** Result of a FreeRADIUS reload/restart command. */
+export interface FreeRadiusReloadResult {
+  triggered: boolean;
+  success:   boolean;
+  stdout?:   string;
+  stderr?:   string;
+  error?:    string;
+}
+
 export interface PlatformSettingsResponse {
   telegram: {
     botToken:    string | null;
@@ -409,6 +439,11 @@ export interface PlatformSettingsResponse {
     configured:  boolean;
   };
   ca: CaInfo;
+  certSettings: CertSubjectSettings;
+  freeradius: {
+    reloadCommand: string | null;
+    configured:    boolean;
+  };
 }
 
 export interface UpdateCaRequest {
@@ -416,4 +451,13 @@ export interface UpdateCaRequest {
   keyPem?:        string;
   keyPassphrase?: string | null;
   regenerate?:    boolean;
+}
+
+export interface UpdateCertSettingsRequest {
+  validityDays?:       number;
+  organization?:       string;
+  organizationalUnit?: string;
+  country?:            string | null;
+  state?:              string | null;
+  locality?:           string | null;
 }

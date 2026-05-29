@@ -16,8 +16,8 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { config } from "../config.js";
 import { loadCa } from "./ca.js";
+import { getCertSettings } from "./certSettings.js";
 import { parseClientCertificatePem } from "./clientCertificates.js";
 import { ServiceUnavailable } from "./errors.js";
 
@@ -72,15 +72,16 @@ export async function issueUserCert(args: {
   email: string | null;
   pkcs12Password?: string | null;
 }): Promise<UserCertBundle> {
-  const c = config();
-
-  // Load CA from unified source (DB → env vars → auto-generate in dev)
-  const ca = await loadCa({ throwIfMissing: true });
+  // Load CA and cert settings concurrently (both DB-backed, DB → env fallback)
+  const [ca, certSettings] = await Promise.all([
+    loadCa({ throwIfMissing: true }),
+    getCertSettings(),
+  ]);
   if (!ca) throw ServiceUnavailable("CA unavailable");
 
   const commonName   = args.username.slice(0, 64);
   const pkcs12Pwd    = args.pkcs12Password?.trim() || randomPkcs12Password();
-  const validityDays = c.DEVICE_CERT_VALIDITY_DAYS;
+  const validityDays = certSettings.validityDays;
 
   return withTmpDir(async (dir) => {
     const caCertPath = join(dir, "ca.pem");
@@ -100,12 +101,12 @@ export async function issueUserCert(args: {
       "",
       "[ dn ]",
       `CN = ${escapeVal(commonName)}`,
-      `O = ${escapeVal(c.DEVICE_CERT_SUBJECT_ORGANIZATION)}`,
-      `OU = ${escapeVal(c.DEVICE_CERT_SUBJECT_ORGANIZATIONAL_UNIT)}`,
+      `O = ${escapeVal(certSettings.organization)}`,
+      `OU = ${escapeVal(certSettings.organizationalUnit)}`,
     ];
-    if (c.DEVICE_CERT_SUBJECT_COUNTRY) cfgLines.push(`C = ${escapeVal(c.DEVICE_CERT_SUBJECT_COUNTRY.toUpperCase())}`);
-    if (c.DEVICE_CERT_SUBJECT_STATE?.trim()) cfgLines.push(`ST = ${escapeVal(c.DEVICE_CERT_SUBJECT_STATE)}`);
-    if (c.DEVICE_CERT_SUBJECT_LOCALITY?.trim()) cfgLines.push(`L = ${escapeVal(c.DEVICE_CERT_SUBJECT_LOCALITY)}`);
+    if (certSettings.country)  cfgLines.push(`C = ${escapeVal(certSettings.country)}`);
+    if (certSettings.state)    cfgLines.push(`ST = ${escapeVal(certSettings.state)}`);
+    if (certSettings.locality) cfgLines.push(`L = ${escapeVal(certSettings.locality)}`);
     if (sanEmail) cfgLines.push(`emailAddress = ${escapeVal(sanEmail)}`);
 
     cfgLines.push(

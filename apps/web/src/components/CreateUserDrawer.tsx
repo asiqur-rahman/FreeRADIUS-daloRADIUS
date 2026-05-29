@@ -63,7 +63,7 @@ export function CreateUserDrawer({ groups, token, onClose, onCreated }: Props) {
   const [fullName, setFullName]   = useState("");
   const [password, setPassword]   = useState(randomPassword());
   const [showPwd, setShowPwd]     = useState(false);
-  const [role, setRole]           = useState<UserRole>("user");
+  const [role, setRole]           = useState<UserRole>("guest");
   const [status, setStatus]       = useState<"active" | "pending">("active");
   const [groupIds, setGroupIds]   = useState<string[]>([]);
   const [validFrom, setValidFrom]   = useState("");
@@ -201,7 +201,8 @@ export function CreateUserDrawer({ groups, token, onClose, onCreated }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Role">
                 <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-                  <option value="user">User — portal access only</option>
+                  <option value="guest">Guest — WiFi access only</option>
+                  <option value="user">User — portal + self-service</option>
                   <option value="admin">Admin — full management</option>
                 </Select>
               </Field>
@@ -348,6 +349,11 @@ export function CreateUserDrawer({ groups, token, onClose, onCreated }: Props) {
           {role === "admin" && (
             <span className="ml-auto text-xs text-amber-400 bg-amber-950/40 border border-amber-800/50 px-2 py-1 rounded-lg">
               Admin — full access
+            </span>
+          )}
+          {role === "guest" && (
+            <span className="ml-auto text-xs text-sky-400 bg-sky-950/40 border border-sky-800/50 px-2 py-1 rounded-lg">
+              Guest — WiFi only, no portal login
             </span>
           )}
         </div>

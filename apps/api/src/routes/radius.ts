@@ -181,6 +181,12 @@ async function authorizePeap(
     return reply.status(404).send({ error: "User not found" });
   }
 
+  // Enforce validUntil expiry — status=active does not imply unexpired.
+  if (user.validUntil && user.validUntil < new Date()) {
+    req.log.info({ username, validUntil: user.validUntil }, "radius.authorize user account expired");
+    return reply.status(403).send({ error: "Account expired" });
+  }
+
   const ntHash = user.secret.ntHash;
   if (!ntHash || ntHash.length !== 32) {
     req.log.warn({ username }, "radius.authorize missing ntHash");
@@ -388,6 +394,8 @@ async function authorizeEapTls(
   }
 
   // Auto-register this MAC as an approved device for the cert owner.
+  // NOTE: update does NOT override status — an explicitly rejected device stays rejected.
+  //       Only a brand-new device (create path) gets status: "approved" automatically.
   const autoDevice = await prisma.userDevice.upsert({
     where: { userId_mac: { userId: userCert.userId, mac: normalizedMac } },
     create: {
@@ -399,8 +407,17 @@ async function authorizeEapTls(
       verifiedAt: new Date(),
       label: `EAP-TLS ${certificate.commonName ?? ""}`.slice(0, 80).trim(),
     },
-    update: { lastSeenAt: new Date(), status: "approved" },
+    update: { lastSeenAt: new Date(), certFingerprint: certificate.fingerprint },
   });
+
+  // Respect an explicit rejection even on the user-cert path.
+  if (autoDevice.status === "rejected") {
+    req.log.info(
+      { username: userCert.user.username, mac: normalizedMac, fingerprint: certificate.fingerprint },
+      "radius.authorize eap-tls device rejected (user-cert path)",
+    );
+    return reply.status(403).send({ error: "Device rejected" });
+  }
 
   const replyAttrs = replyFromGroups(userCert.user.groups);
   req.log.info(

@@ -1,40 +1,52 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Copy,
   Eye,
   EyeOff,
   FileLock2,
   KeyRound,
   Link2,
   Loader2,
+  Play,
   Plus,
   RefreshCw,
+  Server,
   Shield,
   ShieldCheck,
+  Terminal,
   Trash2,
   ToggleLeft,
   ToggleRight,
+  Upload,
   Users,
 } from "lucide-react";
-import type { CaInfo, EapCertificate } from "@app/shared";
+import type { CaInfo, CertSeverity, EapCertificate } from "@app/shared";
 import {
   type LdapSettingsResponse,
   type RadiusAllowedIp,
   type PlatformSettingsResponse,
+  type CertSubjectSettings,
+  type FreeRadiusReloadResult,
   type SamlSettingsResponse,
   getLdapSettings,
   getSamlSettings,
   listCerts,
+  addCert,
+  activateCert,
+  deleteCert,
   listRadiusAllowlist,
   createRadiusAllowedIp,
   updateRadiusAllowedIp,
   deleteRadiusAllowedIp,
   getPlatformSettings,
   updatePlatformSettings,
+  triggerFreeRadiusReload,
   saveLdapSettings,
   saveSamlSettings,
   testLdapConnection,
@@ -46,45 +58,275 @@ import { PageHelp } from "../components/PageHelp";
 
 // ── EAP Certificates panel ─────────────────────────────────────────────────
 
-function CertPanel({ token }: { token: string }) {
-  const [certs, setCerts] = useState<EapCertificate[]>([]);
-  const [error, setError] = useState<string | null>(null);
+const SEVERITY_STYLE: Record<CertSeverity, { bar: string; label: string; icon: React.ReactNode }> = {
+  ok:          { bar: "bg-emerald-500", label: "OK",       icon: <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" /> },
+  "warn-60":   { bar: "bg-amber-400",   label: "60 days",  icon: <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" /> },
+  "warn-30":   { bar: "bg-orange-500",  label: "30 days",  icon: <AlertTriangle className="h-4 w-4 text-orange-400 shrink-0" /> },
+  "critical-7":{ bar: "bg-rose-500",    label: "CRITICAL", icon: <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" /> },
+  expired:     { bar: "bg-rose-700",    label: "EXPIRED",  icon: <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" /> },
+};
 
-  useEffect(() => {
-    listCerts(token).then(setCerts).catch((err: Error) => setError(err.message));
+function CertPanel({ token }: { token: string }) {
+  const [certs, setCerts]       = useState<EapCertificate[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [notice, setNotice]     = useState<{ ok: boolean; text: string } | null>(null);
+  const [copied, setCopied]     = useState<string | null>(null);
+  const [busy, setBusy]         = useState<string | null>(null);
+
+  // Upload form state
+  const [showUpload, setShowUpload] = useState(false);
+  const [pem, setPem]               = useState("");
+  const [notes, setNotes]           = useState("");
+  const [activateOnAdd, setActivateOnAdd] = useState(false);
+  const [uploading, setUploading]   = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setCerts(await listCerts(token));
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Failed to load certificates" });
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const copySha1 = async (id: string, sha1: string) => {
+    await navigator.clipboard.writeText(sha1.toUpperCase());
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleUpload = async () => {
+    if (!pem.trim()) return;
+    setUploading(true); setNotice(null);
+    try {
+      await addCert(token, { pem: pem.trim(), activate: activateOnAdd, notes: notes.trim() || null });
+      setNotice({ ok: true, text: `Certificate added${activateOnAdd ? " and activated" : ""}.` });
+      setPem(""); setNotes(""); setActivateOnAdd(false); setShowUpload(false);
+      await load();
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Upload failed" });
+    } finally { setUploading(false); }
+  };
+
+  const handleActivate = async (id: string) => {
+    setBusy(id); setNotice(null);
+    try {
+      await activateCert(token, id);
+      setNotice({ ok: true, text: "Certificate activated." });
+      await load();
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Activate failed" });
+    } finally { setBusy(null); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this certificate? This cannot be undone.")) return;
+    setBusy(id); setNotice(null);
+    try {
+      await deleteCert(token, id);
+      setNotice({ ok: true, text: "Certificate deleted." });
+      await load();
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Delete failed" });
+    } finally { setBusy(null); }
+  };
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
-      <div className="mb-4 flex items-center gap-3">
-        <KeyRound className="h-5 w-5 text-amber-400" />
-        <h3 className="font-semibold text-white">EAP Server Certificates</h3>
+      {/* Header */}
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <KeyRound className="h-5 w-5 text-amber-400" />
+          <h3 className="font-semibold text-white">EAP Server Certificates</h3>
+        </div>
+        <button
+          onClick={() => setShowUpload((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500"
+        >
+          <Upload className="h-3.5 w-3.5" />
+          Upload PEM
+        </button>
       </div>
-      {error && (
-        <div className="mb-3 rounded-lg border border-rose-900 bg-rose-950/20 px-3 py-2 text-sm text-rose-300">
-          {error}
+      <p className="mb-4 text-xs text-zinc-500">
+        Track RADIUS server certificate expiry. Receive alerts at 60 / 30 / 7 days.
+        The SHA-1 thumbprint is required for Windows 11 WPA2-Enterprise "Trusted certificate thumbprints".
+      </p>
+
+      {/* Notice */}
+      {notice && (
+        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+          notice.ok ? "border-emerald-900 bg-emerald-950/20 text-emerald-300"
+                    : "border-rose-900 bg-rose-950/20 text-rose-300"
+        }`}>
+          {notice.text}
         </div>
       )}
-      {certs.map((cert) => (
-        <div key={cert.id} className="flex items-center gap-3 border-t border-zinc-800 py-3">
-          {cert.severity === "ok" ? (
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <AlertTriangle className="h-4 w-4 text-amber-400" />
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="text-sm text-zinc-100 truncate">{cert.subject}</div>
-            <div className="font-mono text-xs text-zinc-500">{cert.fingerprint.slice(0, 20)}…</div>
+
+      {/* Upload form */}
+      {showUpload && (
+        <div className="mb-4 space-y-3 rounded-xl border border-zinc-700 bg-zinc-950/40 p-4">
+          <p className="text-xs text-zinc-400">
+            Paste the <strong className="text-zinc-200">public certificate PEM</strong> of your RADIUS server's EAP certificate
+            (the one referenced by <code className="rounded bg-zinc-800 px-1 text-zinc-300">certificate = …</code> in FreeRADIUS
+            <code className="rounded bg-zinc-800 px-1 text-zinc-300"> eap.conf</code>).
+            The private key is <em>not</em> required or stored here — this is for tracking and alerts only.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs text-zinc-500">Certificate PEM</label>
+            <textarea
+              rows={6}
+              value={pem}
+              onChange={(e) => setPem(e.target.value)}
+              placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-amber-600 focus:outline-none resize-none"
+            />
           </div>
-          <div className="shrink-0 text-xs text-zinc-400">
-            {cert.isActive ? "Active · " : ""}
-            {cert.daysUntilExpiry} days
+          <div>
+            <label className="mb-1 block text-xs text-zinc-500">Notes (optional)</label>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. renewed 2026-05, Let's Encrypt"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-600 focus:outline-none"
+            />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={activateOnAdd}
+              onChange={(e) => setActivateOnAdd(e.target.checked)}
+              className="rounded border-zinc-600 bg-zinc-800 text-amber-500 focus:ring-amber-500"
+            />
+            <span className="text-xs text-zinc-300">Mark as active certificate</span>
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void handleUpload()}
+              disabled={uploading || !pem.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-60"
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Add Certificate
+            </button>
+            <button
+              onClick={() => setShowUpload(false)}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
           </div>
         </div>
-      ))}
-      {certs.length === 0 && (
-        <p className="text-sm text-zinc-500">No EAP certificates inventoried yet.</p>
       )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && certs.length === 0 && (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/30 px-4 py-6 text-center">
+          <KeyRound className="mx-auto h-8 w-8 text-zinc-600 mb-2" />
+          <p className="text-sm text-zinc-500">No EAP server certificates uploaded yet.</p>
+          <p className="text-xs text-zinc-600 mt-1">
+            Click <strong className="text-zinc-400">Upload PEM</strong> to add the public certificate from your
+            FreeRADIUS <code className="rounded bg-zinc-800 px-1">eap.conf</code> and start tracking expiry.
+          </p>
+        </div>
+      )}
+
+      {/* Certificate list */}
+      {!loading && certs.map((cert) => {
+        const s = SEVERITY_STYLE[cert.severity];
+        return (
+          <div key={cert.id} className="border-t border-zinc-800 py-4 space-y-2">
+            {/* Top row: icon, subject, days, active badge, actions */}
+            <div className="flex items-start gap-3">
+              {s.icon}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-zinc-100 font-medium truncate">{cert.subject}</span>
+                  {cert.isActive && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-700/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      ACTIVE
+                    </span>
+                  )}
+                  <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${s.bar} bg-opacity-20 text-white`}>
+                    {cert.daysUntilExpiry >= 0 ? `${cert.daysUntilExpiry}d remaining` : "EXPIRED"}
+                  </span>
+                </div>
+                <div className="font-mono text-[11px] text-zinc-500 mt-0.5">
+                  SHA-256: {cert.fingerprint.slice(0, 32)}…
+                </div>
+                {cert.notes && (
+                  <div className="text-xs text-zinc-600 mt-0.5">{cert.notes}</div>
+                )}
+                <div className="text-xs text-zinc-600 mt-0.5">
+                  Issued: {new Date(cert.issuedAt).toLocaleDateString()} ·
+                  Expires: {new Date(cert.expiresAt).toLocaleDateString()}
+                </div>
+              </div>
+              {/* Actions */}
+              <div className="shrink-0 flex items-center gap-1.5">
+                {!cert.isActive && (
+                  <button
+                    onClick={() => void handleActivate(cert.id)}
+                    disabled={busy === cert.id}
+                    title="Set as active certificate"
+                    className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    {busy === cert.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    Activate
+                  </button>
+                )}
+                {!cert.isActive && (
+                  <button
+                    onClick={() => void handleDelete(cert.id)}
+                    disabled={busy === cert.id}
+                    title="Delete certificate"
+                    className="rounded-lg p-1.5 text-zinc-500 hover:bg-rose-950/30 hover:text-rose-300 disabled:opacity-50"
+                  >
+                    {busy === cert.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Windows WPA2-Enterprise thumbprint row */}
+            <div className="ml-7 flex items-center gap-2 rounded-lg bg-zinc-950/60 border border-zinc-800 px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">
+                  Windows thumbprint (SHA-1) — paste into "Trusted certificate thumbprints"
+                </div>
+                <div className="font-mono text-xs text-zinc-300 break-all select-all">
+                  {cert.fingerprintSha1
+                    ? cert.fingerprintSha1.toUpperCase()
+                    : <span className="text-zinc-600 italic">Re-upload this cert to generate</span>
+                  }
+                </div>
+              </div>
+              {cert.fingerprintSha1 && (
+                <button
+                  onClick={() => void copySha1(cert.id, cert.fingerprintSha1!)}
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  title="Copy SHA-1 for Windows"
+                >
+                  {copied === cert.id
+                    ? <><Check className="h-3 w-3 text-emerald-400" /> Copied</>
+                    : <><Copy className="h-3 w-3" /> Copy</>
+                  }
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -906,6 +1148,307 @@ function CaPanel({ token }: { token: string }) {
   );
 }
 
+// ── Certificate Issuance Settings panel ───────────────────────────────────────
+
+function CertSettingsPanel({ token }: { token: string }) {
+  const [form, setForm]     = useState<Partial<CertSubjectSettings>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const s = await getPlatformSettings(token);
+      setForm(s.certSettings);
+      setLoaded(true);
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Failed to load" });
+    }
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const f = (key: keyof CertSubjectSettings) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((p) => ({ ...p, [key]: e.target.value }));
+
+  const save = async () => {
+    setSaving(true); setNotice(null);
+    try {
+      const updated = await updatePlatformSettings(token, { certSettings: form });
+      setForm(updated.certSettings);
+      setNotice({ ok: true, text: "Certificate settings saved. New certs issued from now will use these values." });
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Save failed" });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+      <div className="mb-1 flex items-center gap-3">
+        <ShieldCheck className="h-5 w-5 text-violet-400" />
+        <div>
+          <h3 className="font-semibold text-white">Certificate Issuance Settings</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            X.509 subject fields stamped into every EAP-TLS client certificate issued by this platform.
+            Changes apply to <em>new</em> certificates only — existing certs are unaffected.
+          </p>
+        </div>
+      </div>
+
+      {notice && (
+        <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+          notice.ok ? "border-emerald-900 bg-emerald-950/20 text-emerald-300"
+                    : "border-rose-900 bg-rose-950/20 text-rose-300"
+        }`}>
+          {notice.ok ? <CheckCircle2 className="inline h-3.5 w-3.5 mr-1.5" /> : <AlertTriangle className="inline h-3.5 w-3.5 mr-1.5" />}
+          {notice.text}
+        </div>
+      )}
+
+      {!loaded ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-zinc-500" /></div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {/* Validity days */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-zinc-400">
+              Validity period (days)
+              <span className="ml-1 text-zinc-600">— max 397 (browser / MDM limit)</span>
+            </label>
+            <input
+              type="number" min={1} max={397}
+              value={form.validityDays ?? 365}
+              onChange={(e) => setForm((p) => ({ ...p, validityDays: parseInt(e.target.value, 10) || 365 }))}
+              className="w-40 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-violet-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Subject fields */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {[
+              { key: "organization" as const,       label: "Organization (O)",           placeholder: "Acme Corp",      required: true },
+              { key: "organizationalUnit" as const,  label: "Organizational Unit (OU)",   placeholder: "IT / Managed WiFi" },
+              { key: "country" as const,             label: "Country (C)",                placeholder: "US", maxLength: 2, hint: "2-letter ISO code" },
+              { key: "state" as const,               label: "State / Province (ST)",      placeholder: "California" },
+              { key: "locality" as const,            label: "City / Locality (L)",        placeholder: "San Francisco" },
+            ].map(({ key, label, placeholder, required, hint, maxLength }) => (
+              <div key={key}>
+                <label className="mb-1 block text-xs font-medium text-zinc-400">
+                  {label}
+                  {required && <span className="ml-1 text-rose-400">*</span>}
+                  {hint && <span className="ml-1 text-zinc-600">— {hint}</span>}
+                </label>
+                <input
+                  value={String(form[key] ?? "")}
+                  onChange={f(key)}
+                  placeholder={placeholder}
+                  maxLength={maxLength}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-600 focus:outline-none"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Preview */}
+          {form.organization && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Certificate subject preview</div>
+              <code className="text-xs font-mono text-zinc-300 break-all">
+                CN=&lt;username&gt;{form.organization ? `, O=${form.organization}` : ""}{form.organizationalUnit ? `, OU=${form.organizationalUnit}` : ""}{form.country ? `, C=${form.country.toUpperCase()}` : ""}{form.state ? `, ST=${form.state}` : ""}{form.locality ? `, L=${form.locality}` : ""}
+              </code>
+            </div>
+          )}
+
+          <button
+            onClick={() => void save()}
+            disabled={saving || !form.organization?.trim()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Save Certificate Settings
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── FreeRADIUS Auto-Reload panel ───────────────────────────────────────────────
+
+function FreeRadiusPanel({ token }: { token: string }) {
+  const [cmd, setCmd]       = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [lastResult, setLastResult] = useState<FreeRadiusReloadResult | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const s = await getPlatformSettings(token);
+      setCmd(s.freeradius.reloadCommand ?? "");
+      setLoaded(true);
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Failed to load" });
+    }
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const save = async () => {
+    setSaving(true); setNotice(null);
+    try {
+      await updatePlatformSettings(token, { freeradius: { reloadCommand: cmd.trim() || null } });
+      setNotice({ ok: true, text: cmd.trim() ? "Reload command saved — will run automatically after each NAS change." : "Auto-reload disabled." });
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Save failed" });
+    } finally { setSaving(false); }
+  };
+
+  const test = async () => {
+    setTesting(true); setNotice(null); setLastResult(null);
+    try {
+      const result = await triggerFreeRadiusReload(token);
+      setLastResult(result);
+      if (!result.triggered) {
+        setNotice({ ok: false, text: "No reload command configured — save a command first." });
+      } else if (result.success) {
+        setNotice({ ok: true, text: "FreeRADIUS reloaded successfully." });
+      } else {
+        setNotice({ ok: false, text: `Reload command failed: ${result.error ?? "unknown error"}` });
+      }
+    } catch (err) {
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Trigger failed" });
+    } finally { setTesting(false); }
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+      <div className="mb-1 flex items-center gap-3">
+        <Server className="h-5 w-5 text-emerald-400" />
+        <div>
+          <h3 className="font-semibold text-white">FreeRADIUS Auto-Reload</h3>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Automatically restart or reload FreeRADIUS whenever a NAS client is added, updated, or deleted.
+            NAS changes are always saved to the database immediately — reload ensures FreeRADIUS picks them
+            up without manual intervention.
+          </p>
+        </div>
+      </div>
+
+      {notice && (
+        <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+          notice.ok ? "border-emerald-900 bg-emerald-950/20 text-emerald-300"
+                    : "border-rose-900 bg-rose-950/20 text-rose-300"
+        }`}>
+          {notice.ok ? <CheckCircle2 className="inline h-3.5 w-3.5 mr-1.5" /> : <AlertTriangle className="inline h-3.5 w-3.5 mr-1.5" />}
+          {notice.text}
+        </div>
+      )}
+
+      {!loaded ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-zinc-500" /></div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-zinc-400">
+              Reload command
+              <span className="ml-1 text-zinc-600">— executed as the API server process user</span>
+            </label>
+            <input
+              value={cmd}
+              onChange={(e) => setCmd(e.target.value)}
+              placeholder="e.g. systemctl reload freeradius"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Example commands */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/30 px-4 py-3 space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Common examples</div>
+            {(
+              [
+                ["Graceful reload (recommended)", "systemctl reload freeradius"],
+                ["Full restart (drops sessions)", "systemctl restart freeradius"],
+                ["Docker Compose",                "docker compose exec freeradius kill -HUP 1"],
+                ["Docker direct",                 "docker exec freeradius kill -HUP 1"],
+                ["PID file SIGHUP",               "kill -HUP $(cat /var/run/freeradius/freeradius.pid)"],
+                ["radmin socket",                 "radmin -e 'hup server'"],
+              ] as [string, string][]
+            ).map(([label, example]) => (
+              <div key={example} className="flex items-center gap-2">
+                <button
+                  onClick={() => setCmd(example)}
+                  className="shrink-0 text-[10px] text-indigo-400 hover:text-indigo-200 underline"
+                >
+                  use
+                </button>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[11px] text-zinc-500">{label}: </span>
+                  <code className="text-[11px] font-mono text-zinc-300">{example}</code>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              onClick={() => void save()}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Save
+            </button>
+            <button
+              onClick={() => void test()}
+              disabled={testing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+            >
+              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Terminal className="h-4 w-4" />}
+              Test Now
+            </button>
+            {!cmd.trim() && (
+              <span className="text-xs text-zinc-500">Leave blank to disable auto-reload.</span>
+            )}
+          </div>
+
+          {/* Last result detail */}
+          {lastResult?.triggered && (
+            <div className={`rounded-lg border px-4 py-3 text-xs font-mono space-y-1 ${
+              lastResult.success
+                ? "border-emerald-800 bg-emerald-950/20 text-emerald-300"
+                : "border-rose-800 bg-rose-950/20 text-rose-300"
+            }`}>
+              <div className="font-semibold not-italic text-sm mb-1">
+                {lastResult.success ? "✓ Reload succeeded" : "✗ Reload failed"}
+              </div>
+              {lastResult.stdout && <div className="text-zinc-400">stdout: {lastResult.stdout}</div>}
+              {lastResult.stderr && <div className="text-zinc-500">stderr: {lastResult.stderr}</div>}
+              {lastResult.error  && <div>{lastResult.error}</div>}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/30 px-4 py-3 text-xs text-zinc-500 space-y-1">
+            <p><span className="text-zinc-400 font-medium">Note:</span> The command runs as the user that owns the API server process.
+            For <code className="bg-zinc-800 px-1 rounded text-zinc-300">systemctl</code> commands, the API user needs sudo access
+            to reload/restart FreeRADIUS, or use a sudoers rule:
+            </p>
+            <code className="block rounded bg-zinc-900 px-2 py-1.5 text-zinc-300">
+              api-user ALL=(ALL) NOPASSWD: /bin/systemctl reload freeradius
+            </code>
+            <p className="mt-1">
+              <strong className="text-zinc-400">FreeRADIUS SQL module</strong>: If using <code className="bg-zinc-800 px-1 rounded">rlm_sql</code> to
+              read the <code className="bg-zinc-800 px-1 rounded">nas</code> table, some builds re-read on each request
+              (no reload needed). Check your <code className="bg-zinc-800 px-1 rounded">modules/sql</code> config.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Settings view ─────────────────────────────────────────────────────
 
 export function LiveSettingsView() {
@@ -926,6 +1469,8 @@ export function LiveSettingsView() {
       </div>
 
       <CaPanel token={token} />
+      <CertSettingsPanel token={token} />
+      <FreeRadiusPanel token={token} />
       <TelegramPanel token={token} />
       <LdapPanel token={token} />
       <SamlPanel token={token} />

@@ -21,6 +21,14 @@ import {
   loadCa,
   invalidateCaCache,
 } from "../../lib/ca.js";
+import {
+  getCertSettings,
+  saveCertSettings,
+} from "../../lib/certSettings.js";
+import {
+  getReloadCommand,
+  saveReloadCommand,
+} from "../../lib/freeradius.js";
 import { prisma } from "../../db.js";
 import { BadRequest } from "../../lib/errors.js";
 
@@ -39,12 +47,27 @@ const PatchBody = z.object({
 
   ca: z
     .object({
-      // Provide certPem + keyPem to upload a custom CA.
-      certPem:      z.string().max(32_768).optional(),
-      keyPem:       z.string().max(32_768).optional(),
+      certPem:       z.string().max(32_768).optional(),
+      keyPem:        z.string().max(32_768).optional(),
       keyPassphrase: z.string().max(256).nullable().optional(),
-      // Set regenerate:true to auto-generate a new dev CA (ignored in production).
-      regenerate:   z.boolean().optional(),
+      regenerate:    z.boolean().optional(),
+    })
+    .optional(),
+
+  certSettings: z
+    .object({
+      validityDays:       z.coerce.number().int().min(1).max(397).optional(),
+      organization:       z.string().max(128).optional(),
+      organizationalUnit: z.string().max(128).optional(),
+      country:            z.string().max(2).nullable().optional(),
+      state:              z.string().max(128).nullable().optional(),
+      locality:           z.string().max(128).nullable().optional(),
+    })
+    .optional(),
+
+  freeradius: z
+    .object({
+      reloadCommand: z.string().max(500).nullable().optional(),
     })
     .optional(),
 });
@@ -55,9 +78,11 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
 
   // ── GET /admin/settings/platform ────────────────────────────────
   app.get("/settings/platform", async () => {
-    const [tg, caInfo] = await Promise.all([
+    const [tg, caInfo, certSettings, reloadCmd] = await Promise.all([
       getTelegramSettings(),
       getCaInfo(),
+      getCertSettings(),
+      getReloadCommand(),
     ]);
     return {
       telegram: {
@@ -66,6 +91,11 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
         configured:  Boolean(tg.botToken && tg.adminChatId),
       },
       ca: caInfo,
+      certSettings,
+      freeradius: {
+        reloadCommand: reloadCmd,
+        configured:    Boolean(reloadCmd),
+      },
     };
   });
 
@@ -128,9 +158,21 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const [tg, caInfo] = await Promise.all([
+    // ── Cert Settings ─────────────────────────────────────────────
+    if (body.certSettings !== undefined) {
+      await saveCertSettings(body.certSettings);
+    }
+
+    // ── FreeRADIUS reload command ─────────────────────────────────
+    if (body.freeradius !== undefined && body.freeradius.reloadCommand !== undefined) {
+      await saveReloadCommand(body.freeradius.reloadCommand ?? null);
+    }
+
+    const [tg, caInfo, certSettings, reloadCmd] = await Promise.all([
       getTelegramSettings(),
       getCaInfo(),
+      getCertSettings(),
+      getReloadCommand(),
     ]);
     return reply.status(200).send({
       telegram: {
@@ -139,6 +181,11 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
         configured:  Boolean(tg.botToken && tg.adminChatId),
       },
       ca: caInfo,
+      certSettings,
+      freeradius: {
+        reloadCommand: reloadCmd,
+        configured:    Boolean(reloadCmd),
+      },
     });
   });
 };

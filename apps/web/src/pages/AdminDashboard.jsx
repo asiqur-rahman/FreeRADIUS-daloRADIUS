@@ -19,6 +19,7 @@ import { LiveUsersView } from '../views/LiveUsersView';
 import { LiveGroupsView } from '../views/LiveGroupsView';
 import { LiveSettingsView } from '../views/LiveSettingsView';
 import { LiveDeviceApprovalsView } from '../views/LiveDeviceApprovalsView';
+import { LiveAdminDocsView } from '../views/LiveAdminDocsView';
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
@@ -90,14 +91,15 @@ const audit = [
 
 // ─── UI ────────────────────────────────────────────────────────────────────
 const navItems = [
-  { id: 'overview', icon: Home, label: 'Overview' },
-  { id: 'users', icon: UsersRound, label: 'Users' },
-  { id: 'devices', icon: Smartphone, label: 'Device Approvals' },
-  { id: 'sessions', icon: Activity, label: 'Live Sessions' },
-  { id: 'groups', icon: Layers, label: 'Groups & Policy' },
-  { id: 'nas', icon: Cpu, label: 'NAS Devices' },
-  { id: 'audit', icon: BookOpen, label: 'Audit Log' },
-  { id: 'settings', icon: Settings, label: 'Settings' },
+  { id: 'overview',  icon: Home,      label: 'Overview'         },
+  { id: 'users',     icon: UsersRound, label: 'Users'            },
+  { id: 'devices',   icon: Smartphone, label: 'Device Approvals' },
+  { id: 'sessions',  icon: Activity,   label: 'Live Sessions'    },
+  { id: 'groups',    icon: Layers,     label: 'Groups & Policy'  },
+  { id: 'nas',       icon: Cpu,        label: 'NAS Devices'      },
+  { id: 'audit',     icon: BookOpen,   label: 'Audit Log'        },
+  { id: 'settings',  icon: Settings,   label: 'Settings'         },
+  { id: 'docs',      icon: FileText,   label: 'Documentation'    },
 ];
 
 function StatusPill({ status }) {
@@ -639,6 +641,10 @@ function AuditView({ live = true }) {
   );
 }
 
+function DocsView() {
+  return <LiveAdminDocsView/>;
+}
+
 function SettingsView({ live = true }) {
   if (live) return <LiveSettingsView/>;
   return (
@@ -688,6 +694,7 @@ export default function AdminDashboard() {
     nas: 'NAS Devices',
     audit: 'Audit Log',
     settings: 'Settings',
+    docs: 'Documentation',
   };
 
   // Fetch initial pending device count
@@ -722,7 +729,7 @@ export default function AdminDashboard() {
             <Sparkles className="w-5 h-5 text-white" strokeWidth={2.5}/>
           </div>
           <div>
-            <div className="text-sm font-semibold text-white tracking-tight">RadiusNexus</div>
+            <div className="text-sm font-semibold text-white tracking-tight">RadiusOps</div>
             <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Admin Console</div>
           </div>
         </div>
@@ -840,20 +847,21 @@ export default function AdminDashboard() {
 
           {/* Content */}
           <div className="p-4 lg:p-6">
-            {view === 'overview' && <Overview/>}
-            {view === 'users' && <UsersView/>}
-            {view === 'devices' && <LiveDeviceApprovalsView/>}
-            {view === 'sessions' && <SessionsView/>}
-            {view === 'groups' && <GroupsView/>}
-            {view === 'nas' && <NasView/>}
-            {view === 'audit' && <AuditView/>}
-            {view === 'settings' && <SettingsView/>}
+            {view === 'overview'  && <Overview/>}
+            {view === 'users'     && <UsersView/>}
+            {view === 'devices'   && <LiveDeviceApprovalsView/>}
+            {view === 'sessions'  && <SessionsView/>}
+            {view === 'groups'    && <GroupsView/>}
+            {view === 'nas'       && <NasView/>}
+            {view === 'audit'     && <AuditView/>}
+            {view === 'settings'  && <SettingsView/>}
+            {view === 'docs'      && <DocsView/>}
           </div>
 
           {/* Footer */}
           <footer className="border-t border-zinc-800/60 px-4 lg:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-[11px] text-zinc-600">
-              © {new Date().getFullYear()} <span className="text-zinc-500 font-medium">RadiusNexus</span> — Enterprise Wi-Fi Access Control
+              © {new Date().getFullYear()} <span className="text-zinc-500 font-medium">RadiusOps</span> — Enterprise Wi-Fi Access Control
             </span>
             <span className="text-[11px] text-zinc-600">
               Developed &amp; maintained by{' '}

@@ -83,6 +83,12 @@ const schema = z.object({
   // Set to false for local dev / lab convenience.
   RADIUS_IP_GUARD_ENABLED: envBoolean.default(false),
 
+  // ── FreeRADIUS auto-reload ───────────────────────────────────────
+  // Shell command run after every NAS client mutation to reload FreeRADIUS.
+  // Configurable from admin Settings → FreeRADIUS; this env var is the fallback.
+  // Leave empty to disable.  Example: "systemctl reload freeradius"
+  FREERADIUS_RELOAD_COMMAND: z.string().default(""),
+
   // ── Telegram bot ────────────────────────────────────────────────
   // Get BOT_TOKEN from @BotFather.  Get ADMIN_CHAT_ID by messaging @userinfobot.
   TELEGRAM_BOT_TOKEN:     z.string().optional(),
