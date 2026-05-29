@@ -30,7 +30,7 @@ SERVER_CN="${RADIUS_CERT_CN:-radius.local}"
 
 echo ""
 echo "════════════════════════════════════════════════"
-echo "  RadiusNexus — EAP Certificate Generator"
+echo "  RadiusOps — EAP Certificate Generator"
 echo "  Server CN: $SERVER_CN"
 echo "  Output:    $CERT_DIR"
 echo "════════════════════════════════════════════════"
@@ -42,7 +42,7 @@ openssl genrsa -out "$CERT_DIR/ca.key" 4096 2>/dev/null
 openssl req -new -x509 -days 3650 \
   -key "$CERT_DIR/ca.key" \
   -out "$CERT_DIR/ca.pem" \
-  -subj "/CN=RadiusNexus CA/O=RadiusNexus/OU=WiFi Auth" \
+  -subj "/CN=RadiusOps CA/O=RadiusOps/OU=WiFi Auth" \
   2>/dev/null
 echo "    CA: $CERT_DIR/ca.pem"
 
@@ -53,7 +53,7 @@ openssl genrsa -out "$CERT_DIR/server.key" 2048 2>/dev/null
 openssl req -new \
   -key "$CERT_DIR/server.key" \
   -out "$CERT_DIR/server.csr" \
-  -subj "/CN=$SERVER_CN/O=RadiusNexus/OU=WiFi Auth" \
+  -subj "/CN=$SERVER_CN/O=RadiusOps/OU=WiFi Auth" \
   2>/dev/null
 
 # SAN extension — required by modern clients

@@ -1,8 +1,8 @@
 {
-  "name": "radiusnexus",
+  "name": "radiusops",
   "version": "0.1.0",
   "private": true,
-  "description": "RadiusNexus — Enterprise Wi-Fi Access Control Platform (PEAP / EAP-TLS, device approval workflow, Telegram notifications)",
+  "description": "RadiusOps — Enterprise Wi-Fi Access Control Platform (PEAP / EAP-TLS, device approval workflow, Telegram notifications)",
   "author": "Md. Asiqur Rahman Khan",
   "maintainers": [
     {

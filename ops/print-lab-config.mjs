@@ -99,10 +99,7 @@ const serverIp    = OPT_SERVER_IP || lanIps[0] || "<pass --server-ip with your L
 const nasIp       = OPT_NAS_IP     || "<pass --nas-ip or set SEED_LAB_NAS_IP>";
 const nasSecret   = OPT_NAS_SECRET || "<pass --nas-secret or set SEED_LAB_NAS_SECRET>";
 
-const quarantineVlan = rootEnv.QUARANTINE_VLAN_ID || "<set QUARANTINE_VLAN_ID in .env>";
-const normalVlan     = rootEnv.NORMAL_VLAN_ID     || "<set NORMAL_VLAN_ID in .env>";
-
-process.stdout.write(`\n${BOLD}${GREEN}RadiusNexus — lab configuration summary${RESET}\n`);
+process.stdout.write(`\n${BOLD}${GREEN}RadiusOps — lab configuration summary${RESET}\n`);
 
 section("Router / AP settings");
 kv("RADIUS auth server",    serverIp);
@@ -113,11 +110,9 @@ kv("CoA / Disconnect port", "3799/udp");
 kv("NAS / AP IP",           nasIp);
 kv("Shared secret",         nasSecret);
 
-section("Policy defaults");
-kv("Quarantine VLAN", quarantineVlan);
-kv("Normal VLAN fallback", normalVlan);
-kv("Groups (VLAN)",
-  "Staff→20  Family→30  Guest→99  (VLAN IDs match your AP/switch config)");
+section("VLAN / policy");
+kv("VLAN assignment", "Set Tunnel-* reply attributes per group in Admin → Groups");
+kv("Groups",          "Family (full access) · Guest (default, restricted) · add more as needed");
 
 section("Bootstrap identities");
 kv("PEAP test user",     testUsername);

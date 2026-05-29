@@ -85,7 +85,7 @@ function findOpenSSL() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-process.stdout.write(`\n${BOLD}RadiusNexus — Test Client Certificate Generator${RESET}\n\n`);
+process.stdout.write(`\n${BOLD}RadiusOps — Test Client Certificate Generator${RESET}\n\n`);
 
 if (!existsSync(CA_CERT)) die(`CA cert not found: ${CA_CERT}\n  Run: pnpm lab:device-ca`);
 if (!existsSync(CA_KEY))  die(`CA key  not found: ${CA_KEY}\n  Run: pnpm lab:device-ca`);

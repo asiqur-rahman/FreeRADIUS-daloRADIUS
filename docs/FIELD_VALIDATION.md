@@ -122,12 +122,9 @@ Shared secret:                <same value stored in nas_clients>
 CoA / Disconnect port:        3799
 ```
 
-`pnpm lab:config` prints the same values plus your current quarantine and normal VLAN defaults from `.env`.
+`pnpm lab:config` prints the server IP, NAS settings, and bootstrap credentials.
 
-For the first pass, use one SSID and one test user. Keep the switch and AP VLAN config simple:
-
-- quarantine VLAN = `QUARANTINE_VLAN_ID`
-- normal VLAN = group policy reply attrs, or `NORMAL_VLAN_ID` fallback
+For the first pass, use one SSID and one test user. VLAN assignment is done through group reply attributes — add `Tunnel-Type`, `Tunnel-Medium-Type`, and `Tunnel-Private-Group-ID` reply attributes to a group in Admin → Groups to steer members onto a specific VLAN.
 
 ## PEAP Acceptance Flow
 

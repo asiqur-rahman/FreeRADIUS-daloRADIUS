@@ -595,7 +595,7 @@ openssl rand -hex 32`} />
         <ul className="space-y-2">
           {[
             "Session-Timeout is not set by default — sessions are unlimited unless you add it as a group attribute.",
-            "Guest role users have WiFi access via RADIUS. They receive the same portal access as 'user' role — use Groups for VLAN/policy differentiation.",
+            "All users (role: admin or user) get WiFi access via RADIUS. Role only controls dashboard permissions — use Groups to assign VLAN / bandwidth / timeout policies.",
             "Device approval is optional (DEVICE_APPROVAL_REQUIRED env). When disabled, any MAC is accepted for active users.",
             "The platform does not manage FreeRADIUS on disk (no file writes, no restarts). Only the database bridge (radcheck/radreply/nas) is managed.",
             "SAML SSO is supported for portal login only — RADIUS authentication always uses native credentials (NT-Hash or client cert).",

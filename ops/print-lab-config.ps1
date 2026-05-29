@@ -93,16 +93,6 @@ if ([string]::IsNullOrWhiteSpace($resolvedServerIp)) {
   $resolvedServerIp = "<pass -ServerIp with your LAN address>"
 }
 
-$quarantineVlan = $rootEnv["QUARANTINE_VLAN_ID"]
-if ([string]::IsNullOrWhiteSpace($quarantineVlan)) {
-  $quarantineVlan = "<set QUARANTINE_VLAN_ID in .env>"
-}
-
-$normalVlan = $rootEnv["NORMAL_VLAN_ID"]
-if ([string]::IsNullOrWhiteSpace($normalVlan)) {
-  $normalVlan = "<set NORMAL_VLAN_ID in .env>"
-}
-
 if ([string]::IsNullOrWhiteSpace($NasSecret)) {
   $NasSecret = "<set -NasSecret or SEED_LAB_NAS_SECRET>"
 }
@@ -122,9 +112,9 @@ Write-Kv "CoA / Disconnect port" "3799/udp"
 Write-Kv "NAS / AP IP" $NasIp
 Write-Kv "Shared secret" $NasSecret
 
-Write-Section "Policy defaults"
-Write-Kv "Quarantine VLAN" $quarantineVlan
-Write-Kv "Normal VLAN fallback" $normalVlan
+Write-Section "VLAN / policy"
+Write-Kv "VLAN assignment" "Set Tunnel-* reply attributes per group in Admin -> Groups"
+Write-Kv "Groups" "Family (full access) . Guest (default, restricted) . add more as needed"
 
 Write-Section "Bootstrap identities"
 Write-Kv "PEAP test user" $testUsername

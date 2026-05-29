@@ -1,4 +1,4 @@
-# RadiusNexus — Enterprise Wi-Fi Access Control Platform
+# RadiusOps — Enterprise Wi-Fi Access Control Platform
 
 Production-grade **802.1X / PEAP-MSCHAPv2 / EAP-TLS** Wi-Fi management platform with device approval workflow, Telegram notifications, and a full admin & self-service dashboard.
 

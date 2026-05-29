@@ -23,8 +23,8 @@ export default defineConfig(({ mode }) => {
 
         manifest: {
           id: "/",
-          name: "RadiusNexus",
-          short_name: "RadiusNexus",
+          name: "RadiusOps",
+          short_name: "RadiusOps",
           description: "Enterprise Wi-Fi Access Control — PEAP/EAP-TLS device approval & management platform",
           lang: "en",
           dir: "ltr",

@@ -1,6 +1,6 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
-# RadiusNexus API — Docker entrypoint
+# RadiusOps API — Docker entrypoint
 #
 # 1. Applies any pending Prisma migrations (idempotent — safe to run every start)
 # 2. Hands off to the main process (node dist/index.js)

@@ -32,7 +32,7 @@ function die(msg) { process.stderr.write(`${RED}${BOLD}✗ ${msg}${RESET}\n`); p
 function ok(msg)  { process.stdout.write(`${GREEN}✓ ${msg}${RESET}\n`); }
 function info(msg){ process.stdout.write(`${CYAN}  ${msg}${RESET}\n`); }
 
-process.stdout.write(`\n${BOLD}RadiusNexus — EAP certificate generator${RESET}\n\n`);
+process.stdout.write(`\n${BOLD}RadiusOps — EAP certificate generator${RESET}\n\n`);
 
 if (!existsSync(SCRIPT)) die(`Script not found: ${SCRIPT}`);
 

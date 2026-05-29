@@ -146,7 +146,7 @@ function updateEnvPem(envPath, key, pem) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-process.stdout.write(`\n${BOLD}RadiusNexus — Device CA Generator${RESET}\n\n`);
+process.stdout.write(`\n${BOLD}RadiusOps — Device CA Generator${RESET}\n\n`);
 
 const openssl = findOpenSSL();
 info(`OpenSSL: ${execSync(`${openssl} version`, { encoding: "utf8" }).trim()}`);

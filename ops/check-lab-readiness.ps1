@@ -379,9 +379,7 @@ $requiredRoot = @(
   "JWT_SECRET",
   "COOKIE_SECRET",
   "MFA_ENCRYPTION_KEY",
-  "RADIUS_HOOK_SECRET",
-  "QUARANTINE_VLAN_ID",
-  "NORMAL_VLAN_ID"
+  "RADIUS_HOOK_SECRET"
 )
 
 foreach ($key in $requiredRoot) {
@@ -393,7 +391,7 @@ foreach ($key in $requiredRoot) {
   }
 }
 
-foreach ($key in @("DATABASE_URL", "RADIUS_HOOK_SECRET", "QUARANTINE_VLAN_ID", "NORMAL_VLAN_ID")) {
+foreach ($key in @("DATABASE_URL", "RADIUS_HOOK_SECRET")) {
   if ([string]::IsNullOrWhiteSpace($apiEnv[$key])) {
     Write-Check WARN "apps/api/.env:$key" "not set locally"
     continue

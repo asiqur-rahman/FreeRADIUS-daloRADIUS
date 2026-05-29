@@ -108,7 +108,7 @@ function dockerNative() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-process.stdout.write(`\n${BOLD}${CYAN}RadiusNexus — lab readiness check${RESET}\n\n`);
+process.stdout.write(`\n${BOLD}${CYAN}RadiusOps — lab readiness check${RESET}\n\n`);
 
 const rootEnv = readEnvFile(join(ROOT, ".env"));
 const apiEnv  = readEnvFile(join(ROOT, "apps/api/.env"));

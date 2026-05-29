@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { prisma } from "../db.js";
 
 const health: FastifyPluginAsync = async (app) => {
-  app.get("/health/live", async () => ({ status: "ok", product: "RadiusNexus" }));
+  app.get("/health/live", async () => ({ status: "ok", product: "RadiusOps" }));
 
   app.get("/health/ready", async (_req, reply) => {
     try {

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  RadiusNexus — Main Compose entry point
+#  RadiusOps — Main Compose entry point
 #
 #  Includes all three service layers so a single command starts the full stack.
 #

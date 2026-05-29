@@ -47,7 +47,7 @@ export function PwaInstallPrompt() {
   return (
     <div
       role="dialog"
-      aria-label="Install RadiusNexus"
+      aria-label="Install RadiusOps"
       className="fixed bottom-4 right-4 z-50 w-72"
     >
       <div className="flex items-start gap-3 rounded-xl border border-zinc-700 bg-zinc-900/95 p-4 shadow-2xl backdrop-blur-sm">
@@ -58,7 +58,7 @@ export function PwaInstallPrompt() {
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-zinc-100 leading-tight">
-            Install RadiusNexus
+            Install RadiusOps
           </p>
           <p className="mt-0.5 text-xs text-zinc-400 leading-snug">
             Add to home screen for quick access and offline use.

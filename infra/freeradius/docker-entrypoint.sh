@@ -56,7 +56,7 @@ else
     openssl req -new -x509 -days 3650 \
         -key "$DEST_DIR/ca.key" \
         -out "$DEST_DIR/ca.pem" \
-        -subj "/CN=RadiusNexus CA/O=RadiusNexus/OU=WiFi Auth" \
+        -subj "/CN=RadiusOps CA/O=RadiusOps/OU=WiFi Auth" \
         2>/dev/null
 
     # Server key + CSR
@@ -64,7 +64,7 @@ else
     openssl req -new \
         -key "$DEST_DIR/server.key" \
         -out "$DEST_DIR/server.csr" \
-        -subj "/CN=$CN/O=RadiusNexus/OU=WiFi Auth" \
+        -subj "/CN=$CN/O=RadiusOps/OU=WiFi Auth" \
         2>/dev/null
 
     # Server cert (SAN required by modern supplicants)
