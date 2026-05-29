@@ -149,7 +149,7 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
           where: { key: { in: ["ca.cert_pem", "ca.key_pem", "ca.key_passphrase"] } },
         });
         invalidateCaCache();
-        await loadCa({ throwIfMissing: true }); // triggers auto-gen + save
+        await loadCa(); // triggers auto-gen + save
       } else if (certPem || keyPem) {
         // Upload custom CA — require both halves.
         if (!certPem?.trim())  throw BadRequest("ca.certPem is required when uploading a CA");

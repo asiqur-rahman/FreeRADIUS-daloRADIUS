@@ -51,12 +51,8 @@ const schema = z.object({
   ALERT_NAS_SILENT_MINUTES: z.coerce.number().int().positive().default(15),
   ALERT_REJECT_THRESHOLD_5M: z.coerce.number().int().positive().default(20),
 
-  // Empty string from env_file is treated as "not set" for all optional cert fields.
-  DEVICE_CERT_CA_CERT_PEM: z.string().transform(v => v.trim() || undefined).optional(),
-  DEVICE_CERT_CA_KEY_PEM: z.string().transform(v => v.trim() || undefined).optional(),
-  DEVICE_CERT_CA_CERT_PATH: z.string().transform(v => v.trim() || undefined).optional(),
-  DEVICE_CERT_CA_KEY_PATH: z.string().transform(v => v.trim() || undefined).optional(),
-  DEVICE_CERT_CA_KEY_PASSPHRASE: z.string().transform(v => v.trim() || undefined).optional(),
+  // CA is managed exclusively via the admin panel (Admin → Settings → CA Certificate).
+  // No env-var CA loading — configuration lives in platform_settings (DB-backed).
   DEVICE_CERT_VALIDITY_DAYS: z.coerce.number().int().min(1).max(397).default(365),
   DEVICE_CERT_SUBJECT_ORGANIZATION: z.string().default("RadiusOps"),
   DEVICE_CERT_SUBJECT_ORGANIZATIONAL_UNIT: z.string().default("Managed WiFi"),

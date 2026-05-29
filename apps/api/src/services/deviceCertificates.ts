@@ -5,11 +5,12 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import type { FastifyRequest } from "fastify";
 import type { Prisma } from "@prisma/client";
-import { config } from "../config.js";
 import { prisma } from "../db.js";
 import { audit } from "../lib/audit.js";
+import { loadCa } from "../lib/ca.js";
 import type { ClientCertificateSummary } from "../lib/clientCertificates.js";
 import { parseClientCertificatePem } from "../lib/clientCertificates.js";
+import { getCertSettings } from "../lib/certSettings.js";
 import { Conflict, NotFound, ServiceUnavailable } from "../lib/errors.js";
 import { decideDevice } from "./deviceApprovals.js";
 import { disconnectUserSessions } from "./sessions.js";
@@ -55,12 +56,6 @@ export interface GeneratedDeviceCertificateResult extends DeviceCertificateBindi
   pkcs12Password: string;
 }
 
-interface ManagedCaMaterial {
-  certPem: string;
-  keyPem: string;
-  keyPassphrase: string | null;
-}
-
 function defaultCommonName(username: string, mac: string): string {
   return `${username}-${mac.replace(/:/g, "")}`.slice(0, 64);
 }
@@ -102,28 +97,6 @@ async function runOpenSsl(
   });
 }
 
-async function loadManagedCaMaterial(): Promise<ManagedCaMaterial> {
-  const c = config();
-  const certPem =
-    c.DEVICE_CERT_CA_CERT_PEM ??
-    (c.DEVICE_CERT_CA_CERT_PATH ? await fs.readFile(c.DEVICE_CERT_CA_CERT_PATH, "utf8") : null);
-  const keyPem =
-    c.DEVICE_CERT_CA_KEY_PEM ??
-    (c.DEVICE_CERT_CA_KEY_PATH ? await fs.readFile(c.DEVICE_CERT_CA_KEY_PATH, "utf8") : null);
-
-  if (!certPem || !keyPem) {
-    throw ServiceUnavailable(
-      "Managed certificate issuance is not configured. Provide DEVICE_CERT_CA_CERT_* and DEVICE_CERT_CA_KEY_*.",
-    );
-  }
-
-  return {
-    certPem,
-    keyPem,
-    keyPassphrase: c.DEVICE_CERT_CA_KEY_PASSPHRASE ?? null,
-  };
-}
-
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await fs.mkdtemp(join(tmpdir(), "radius-device-cert-"));
   try {
@@ -146,8 +119,10 @@ async function issueCertificateBundle(args: {
   pkcs12Base64: string;
   pkcs12Password: string;
 }> {
-  const c = config();
-  const ca = await loadManagedCaMaterial();
+  const [ca, certSettings] = await Promise.all([
+    loadCa(),
+    getCertSettings(),
+  ]);
   const commonName = escapeConfigValue(args.commonName?.trim() || defaultCommonName(args.username, args.mac));
   const sanEmail = args.sanEmail?.trim() || null;
   const pkcs12Password = args.pkcs12Password?.trim() || randomPkcs12Password();
@@ -169,18 +144,18 @@ async function issueCertificateBundle(args: {
       ``,
       `[ dn ]`,
       `CN = ${commonName}`,
-      `O = ${escapeConfigValue(c.DEVICE_CERT_SUBJECT_ORGANIZATION)}`,
-      `OU = ${escapeConfigValue(c.DEVICE_CERT_SUBJECT_ORGANIZATIONAL_UNIT)}`,
+      `O = ${escapeConfigValue(certSettings.organization)}`,
+      `OU = ${escapeConfigValue(certSettings.organizationalUnit)}`,
     ];
 
-    if (c.DEVICE_CERT_SUBJECT_COUNTRY) {
-      subjectLines.push(`C = ${escapeConfigValue(c.DEVICE_CERT_SUBJECT_COUNTRY.toUpperCase())}`);
+    if (certSettings.country) {
+      subjectLines.push(`C = ${escapeConfigValue(certSettings.country.toUpperCase())}`);
     }
-    if (c.DEVICE_CERT_SUBJECT_STATE?.trim()) {
-      subjectLines.push(`ST = ${escapeConfigValue(c.DEVICE_CERT_SUBJECT_STATE)}`);
+    if (certSettings.state?.trim()) {
+      subjectLines.push(`ST = ${escapeConfigValue(certSettings.state)}`);
     }
-    if (c.DEVICE_CERT_SUBJECT_LOCALITY?.trim()) {
-      subjectLines.push(`L = ${escapeConfigValue(c.DEVICE_CERT_SUBJECT_LOCALITY)}`);
+    if (certSettings.locality?.trim()) {
+      subjectLines.push(`L = ${escapeConfigValue(certSettings.locality)}`);
     }
     if (sanEmail) {
       subjectLines.push(`emailAddress = ${escapeConfigValue(sanEmail)}`);
@@ -207,7 +182,7 @@ async function issueCertificateBundle(args: {
 
     const env = {
       ...process.env,
-      OPENSSL_CA_KEY_PASSPHRASE: ca.keyPassphrase ?? "",
+      OPENSSL_CA_KEY_PASSPHRASE: ca.passphrase ?? "",
     };
 
     await runOpenSsl(["genrsa", "-out", keyPath, "2048"], dir, env);
@@ -226,14 +201,14 @@ async function issueCertificateBundle(args: {
       "-out",
       certPath,
       "-days",
-      String(c.DEVICE_CERT_VALIDITY_DAYS),
+      String(certSettings.validityDays),
       "-sha256",
       "-extfile",
       reqConfigPath,
       "-extensions",
       "v3_req",
     ];
-    if (ca.keyPassphrase) {
+    if (ca.passphrase) {
       signArgs.splice(8, 0, "-passin", "env:OPENSSL_CA_KEY_PASSPHRASE");
     }
     await runOpenSsl(signArgs, dir, env);

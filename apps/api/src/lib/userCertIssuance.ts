@@ -72,12 +72,11 @@ export async function issueUserCert(args: {
   email: string | null;
   pkcs12Password?: string | null;
 }): Promise<UserCertBundle> {
-  // Load CA and cert settings concurrently (both DB-backed, DB → env fallback)
+  // Load CA and cert settings concurrently (both DB-backed with auto-gen fallback)
   const [ca, certSettings] = await Promise.all([
-    loadCa({ throwIfMissing: true }),
+    loadCa(),
     getCertSettings(),
   ]);
-  if (!ca) throw ServiceUnavailable("CA unavailable");
 
   const commonName   = args.username.slice(0, 64);
   const pkcs12Pwd    = args.pkcs12Password?.trim() || randomPkcs12Password();

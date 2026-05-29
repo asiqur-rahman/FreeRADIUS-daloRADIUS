@@ -1,12 +1,10 @@
 param(
   [string]$OutDir = ".\ops\dev-ca",
-  [string]$RootEnvPath = ".\.env",
   [string]$CommonName = "RadiusOps Dev Device CA",
   [string]$Organization = "RadiusOps",
   [string]$OrganizationalUnit = "Managed WiFi",
   [int]$KeySize = 2048,
   [int]$ValidityYears = 5,
-  [switch]$SkipRootEnvUpdate,
   [switch]$Force
 )
 
@@ -31,79 +29,15 @@ function Assert-WritableTarget {
   }
 }
 
-
-function Set-EnvFileValue {
-  param(
-    [string]$Path,
-    [string]$Key,
-    [string]$Value
-  )
-
-  $lines = New-Object "System.Collections.Generic.List[string]"
-  if (Test-Path $Path) {
-    foreach ($line in Get-Content -Path $Path) {
-      $lines.Add($line)
-    }
-  }
-  $updated = $false
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -match "^\s*$([regex]::Escape($Key))=") {
-      $lines[$i] = "$Key=$Value"
-      $updated = $true
-      break
-    }
-  }
-
-  if (-not $updated) {
-    if ($lines.Count -gt 0 -and $lines[$lines.Count - 1].Trim()) {
-      $lines.Add("")
-    }
-    $lines.Add("$Key=$Value")
-  }
-
-  [System.IO.File]::WriteAllLines($Path, $lines, [System.Text.Encoding]::UTF8)
-}
-
-# Replaces or appends a multi-line quoted PEM value in an .env file.
-# Handles the case where a previous PEM value spans multiple lines inside quotes.
-function Set-EnvFilePemValue {
-  param(
-    [string]$Path,
-    [string]$Key,
-    [string]$Pem    # raw PEM text (may contain newlines)
-  )
-
-  $quotedValue = "`"$Pem`""
-
-  if (-not (Test-Path $Path)) {
-    [System.IO.File]::WriteAllText($Path, "$Key=$quotedValue`n", [System.Text.Encoding]::UTF8)
-    return
-  }
-
-  $content = [System.IO.File]::ReadAllText($Path)
-
-  # Match KEY="..." potentially spanning multiple lines (non-greedy inside quotes)
-  $pattern = "(?m)^[ \t]*$([regex]::Escape($Key))=`"[\s\S]*?`""
-  if ($content -match $pattern) {
-    $content = [regex]::Replace($content, $pattern, "$Key=$quotedValue")
-  }
-  # Also match unquoted KEY=  (empty value on a single line)
-  elseif ($content -match "(?m)^[ \t]*$([regex]::Escape($Key))=[ \t]*$") {
-    $content = [regex]::Replace($content, "(?m)^[ \t]*$([regex]::Escape($Key))=[ \t]*$", "$Key=$quotedValue")
-  }
-  else {
-    if (-not $content.EndsWith("`n")) { $content += "`n" }
-    $content += "$Key=$quotedValue`n"
-  }
-
-  [System.IO.File]::WriteAllText($Path, $content, [System.Text.Encoding]::UTF8)
-}
+Write-Host ""
+Write-Host "RadiusOps — Device CA Generator" -ForegroundColor White
+Write-Host ""
 
 $resolvedOutDir = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $OutDir))
 [System.IO.Directory]::CreateDirectory($resolvedOutDir) | Out-Null
 
-$certPath = Join-Path $resolvedOutDir "device-ca.pem"
-$keyPath = Join-Path $resolvedOutDir "device-ca.key"
+$certPath = Join-Path $resolvedOutDir "ca.pem"
+$keyPath  = Join-Path $resolvedOutDir "ca.key"
 Assert-WritableTarget $certPath
 Assert-WritableTarget $keyPath
 
@@ -115,6 +49,8 @@ if ($OrganizationalUnit.Trim()) {
   $subjectParts += "OU=$OrganizationalUnit"
 }
 $subject = ($subjectParts -join ", ")
+
+Write-Host ("  Generating RSA-{0} key pair…" -f $KeySize) -ForegroundColor Cyan
 
 $key = [System.Security.Cryptography.RSACng]::new($KeySize)
 $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
@@ -138,36 +74,38 @@ $request.CertificateExtensions.Add(
   [System.Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new($request.PublicKey, $false)
 )
 
-$notBefore = [DateTimeOffset]::UtcNow.AddMinutes(-5)
-$notAfter = $notBefore.AddYears($ValidityYears)
+$notBefore  = [DateTimeOffset]::UtcNow.AddMinutes(-5)
+$notAfter   = $notBefore.AddYears($ValidityYears)
 $certificate = $request.CreateSelfSigned($notBefore, $notAfter)
 
 $certificatePem = Convert-ToPem -Label "CERTIFICATE" -Bytes $certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
-$keyPem = Convert-ToPem -Label "PRIVATE KEY" -Bytes $key.Key.Export([System.Security.Cryptography.CngKeyBlobFormat]::Pkcs8PrivateBlob)
+$keyPem         = Convert-ToPem -Label "PRIVATE KEY"  -Bytes $key.Key.Export([System.Security.Cryptography.CngKeyBlobFormat]::Pkcs8PrivateBlob)
+
+Write-Host ("  Signing CA certificate ({0} years)…" -f $ValidityYears) -ForegroundColor Cyan
 
 [System.IO.File]::WriteAllText($certPath, $certificatePem, [System.Text.Encoding]::ASCII)
-[System.IO.File]::WriteAllText($keyPath, $keyPem, [System.Text.Encoding]::ASCII)
+[System.IO.File]::WriteAllText($keyPath,  $keyPem,         [System.Text.Encoding]::ASCII)
 
-if (-not $SkipRootEnvUpdate) {
-  # Single root .env — used by both Docker and local pnpm dev (via --env-file=../../.env).
-  # PEM content is embedded inline so no file paths are needed anywhere.
-  $resolvedRootEnvPath = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $RootEnvPath))
-  Set-EnvFilePemValue -Path $resolvedRootEnvPath -Key "DEVICE_CERT_CA_CERT_PEM" -Pem $certificatePem
-  Set-EnvFilePemValue -Path $resolvedRootEnvPath -Key "DEVICE_CERT_CA_KEY_PEM"  -Pem $keyPem
-}
-
-Write-Host "Generated local device CA" -ForegroundColor Green
-Write-Host ""
-Write-Host ("Certificate: {0}" -f $certPath)
-Write-Host ("Private key: {0}" -f $keyPath)
+Write-Host ("✓ Cert → {0}" -f $certPath) -ForegroundColor Green
+Write-Host ("✓ Key  → {0}" -f $keyPath)  -ForegroundColor Green
 Write-Host ""
 
-if (-not $SkipRootEnvUpdate) {
-  Write-Host "[OK] .env - updated with inline PEM (used by Docker and pnpm dev)" -ForegroundColor Cyan
-  Write-Host "    DEVICE_CERT_CA_CERT_PEM=`"<certificate>`""
-  Write-Host "    DEVICE_CERT_CA_KEY_PEM=`"<private key>`""
-  Write-Host ""
-}
+# Quick sanity — print subject and validity from the generated cert
+$x509 = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([System.Text.Encoding]::ASCII.GetBytes($certificatePem))
+Write-Host ("  Subject : {0}" -f $x509.Subject)    -ForegroundColor Cyan
+Write-Host ("  Not Before: {0}" -f $x509.NotBefore) -ForegroundColor Cyan
+Write-Host ("  Not After : {0}" -f $x509.NotAfter)  -ForegroundColor Cyan
+Write-Host ""
 
-Write-Host "Then generate a test client cert with:" -ForegroundColor Cyan
-Write-Host ("pnpm lab:client-cert -- -CaCertPath `"{0}`" -CaKeyPath `"{1}`"" -f $certPath, $keyPath)
+Write-Host "Done." -ForegroundColor White
+Write-Host ""
+Write-Host "Next step — upload the CA to the admin panel:" -ForegroundColor White
+Write-Host ""
+Write-Host "  1. Open the admin dashboard"
+Write-Host ("  2. Go to  Admin → Settings → CA Certificate")
+Write-Host ("  3. Paste the contents of  {0}  into `"CA Certificate`"" -f $certPath)
+Write-Host ("  4. Paste the contents of  {0}  into `"CA Private Key`""  -f $keyPath)
+Write-Host "  5. Click Save"
+Write-Host ""
+Write-Host "Or, if you just want auto-generated certs, click `"Generate`" in the admin panel — no script needed."
+Write-Host ""

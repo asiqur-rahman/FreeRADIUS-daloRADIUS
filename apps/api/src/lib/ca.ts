@@ -3,15 +3,14 @@
 //
 //  Single source of truth for the CA that signs all EAP-TLS client certs.
 //  This is the same CA cert that gets distributed to devices so they can
-//  trust the WiFi network — no separate RADIUS_CA_CERT_PATH needed.
+//  trust the WiFi network.
 //
 //  Source priority (highest wins):
-//    1. DB  — platform_settings keys ca.cert_pem / ca.key_pem  (configurable live)
-//    2. ENV — DEVICE_CERT_CA_CERT_PEM / DEVICE_CERT_CA_KEY_PEM  (production override)
-//    3. AUTO — self-signed CA generated once and saved to DB    (dev only)
-//
-//  In production with NODE_ENV=production, source 3 is skipped and the service
-//  throws if no CA is configured.
+//    1. DB   — platform_settings keys ca.cert_pem / ca.key_pem
+//              Configured via Admin → Settings → CA Certificate.
+//    2. AUTO — self-signed CA generated once, saved to DB, and reused forever.
+//              Works identically in dev and production.
+//              Admin can replace it at any time via Admin → Settings → CA Certificate.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { promises as fs } from "node:fs";
@@ -20,13 +19,12 @@ import { tmpdir }         from "node:os";
 import { join }           from "node:path";
 import { X509Certificate } from "node:crypto";
 import { prisma }         from "../db.js";
-import { config }         from "../config.js";
 import { getCertSettings } from "./certSettings.js";
 import { ServiceUnavailable } from "./errors.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CaSource = "db" | "env" | "auto";
+export type CaSource = "db" | "auto";
 
 export interface CaBundle {
   certPem:    string;
@@ -69,27 +67,6 @@ async function loadFromDb(): Promise<CaBundle | null> {
     keyPem:     map["ca.key_pem"],
     passphrase: map["ca.key_passphrase"]?.trim() || null,
     source:     "db",
-  };
-}
-
-async function loadFromEnv(): Promise<CaBundle | null> {
-  const c = config();
-  const certPem =
-    c.DEVICE_CERT_CA_CERT_PEM ??
-    (c.DEVICE_CERT_CA_CERT_PATH
-      ? await fs.readFile(c.DEVICE_CERT_CA_CERT_PATH, "utf8").catch(() => null)
-      : null);
-  const keyPem =
-    c.DEVICE_CERT_CA_KEY_PEM ??
-    (c.DEVICE_CERT_CA_KEY_PATH
-      ? await fs.readFile(c.DEVICE_CERT_CA_KEY_PATH, "utf8").catch(() => null)
-      : null);
-  if (!certPem?.trim() || !keyPem?.trim()) return null;
-  return {
-    certPem,
-    keyPem,
-    passphrase: c.DEVICE_CERT_CA_KEY_PASSPHRASE ?? null,
-    source:     "env",
   };
 }
 
@@ -163,9 +140,8 @@ async function generateAndSaveCa(): Promise<CaBundle> {
     await saveCaToDB(certPem, keyPem, null);
 
     console.info(
-      "[ca] Auto-generated dev CA and saved to platform_settings. " +
-      "For production, configure DEVICE_CERT_CA_CERT_PEM + DEVICE_CERT_CA_KEY_PEM " +
-      "or upload via admin Settings → Certificate Authority.",
+      "[ca] Auto-generated CA and saved to platform_settings. " +
+      "You can replace it at any time via Admin → Settings → CA Certificate.",
     );
 
     return { certPem, keyPem, passphrase: null, source: "auto" };
@@ -199,37 +175,24 @@ export async function saveCaToDB(
 
 /**
  * Load the CA bundle.
- * In dev/test, auto-generates and saves to DB if nothing is configured.
- * In production, returns null (or throws if throwIfMissing=true) when unconfigured.
+ * If no CA is in the database, auto-generates one, saves it, and returns it.
+ * The auto-generated CA is reused on every subsequent call (DB-backed).
+ * Admin can replace it at any time via Admin → Settings → CA Certificate.
  */
-export async function loadCa(opts?: { throwIfMissing?: boolean }): Promise<CaBundle | null> {
+export async function loadCa(): Promise<CaBundle> {
   if (_cached && Date.now() < _cacheExpiry) return _cached;
 
   const db = await loadFromDb();
   if (db) { _cached = db; _cacheExpiry = Date.now() + CACHE_TTL; return db; }
 
-  const env = await loadFromEnv();
-  if (env) { _cached = env; _cacheExpiry = Date.now() + CACHE_TTL; return env; }
-
-  if (config().NODE_ENV !== "production") {
-    const auto = await generateAndSaveCa();
-    _cached = auto; _cacheExpiry = Date.now() + CACHE_TTL;
-    return auto;
-  }
-
-  if (opts?.throwIfMissing) {
-    throw ServiceUnavailable(
-      "No Certificate Authority configured. " +
-      "Set DEVICE_CERT_CA_CERT_PEM + DEVICE_CERT_CA_KEY_PEM or upload via admin Settings.",
-    );
-  }
-  return null;
+  const auto = await generateAndSaveCa();
+  _cached = auto; _cacheExpiry = Date.now() + CACHE_TTL;
+  return auto;
 }
 
 /** Parse cert metadata for admin display — never exposes the private key. */
 export async function getCaInfo(): Promise<CaInfo> {
   const ca = await loadCa();
-  if (!ca) return { configured: false, source: null, subject: null, issuer: null, expiresAt: null, fingerprint: null };
 
   try {
     const x509 = new X509Certificate(ca.certPem);

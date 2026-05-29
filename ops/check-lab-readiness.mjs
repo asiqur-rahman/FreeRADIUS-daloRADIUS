@@ -140,15 +140,10 @@ tgConfigured
   ? check("PASS",  "Telegram", "bot token + admin chat id configured")
   : check("WARN",  "Telegram", "not configured — configurable from admin panel");
 
-// ── Device CA material ────────────────────────────────────────────────────────
-const caConfigured =
-  (rootEnv.DEVICE_CERT_CA_CERT_PEM  && rootEnv.DEVICE_CERT_CA_KEY_PEM) ||
-  (rootEnv.DEVICE_CERT_CA_CERT_PATH && rootEnv.DEVICE_CERT_CA_KEY_PATH) ||
-  (apiEnv.DEVICE_CERT_CA_CERT_PEM   && apiEnv.DEVICE_CERT_CA_KEY_PEM)  ||
-  (apiEnv.DEVICE_CERT_CA_CERT_PATH  && apiEnv.DEVICE_CERT_CA_KEY_PATH);
-caConfigured
-  ? check("PASS", "Device CA material", "configured")
-  : check("WARN", "Device CA material", "not configured — run: pnpm lab:device-ca");
+// ── Device CA (EAP-TLS) ───────────────────────────────────────────────────────
+// CA is DB-backed and configured via Admin → Settings → CA Certificate.
+// In dev mode (NODE_ENV=development) it auto-generates on first cert issuance.
+check("INFO", "Device CA (EAP-TLS)", "configure via Admin → Settings → CA Certificate");
 
 // ── OpenSSL ───────────────────────────────────────────────────────────────────
 commandExists("openssl")

@@ -5,6 +5,9 @@
  * Cross-platform device CA generator for local development.
  * Works on Windows, macOS, and Linux — requires only Node ≥ 20 and OpenSSL in PATH.
  *
+ * Generates a CA key+cert and saves them to --out-dir (default: ops/dev-ca/).
+ * Upload the result to the admin panel: Admin → Settings → CA Certificate.
+ *
  * OpenSSL ships with:
  *   • Linux   — system package manager  (apt install openssl / dnf install openssl)
  *   • macOS   — Homebrew (brew install openssl) or system LibreSSL
@@ -15,13 +18,11 @@
  *
  * Options:
  *   --out-dir   <path>   Output directory  (default: ops/dev-ca)
- *   --env-path  <path>   .env file to update (default: .env)
  *   --cn        <string> Certificate CN   (default: "RadiusOps Dev Device CA")
  *   --org       <string> Organisation     (default: "RadiusOps")
  *   --ou        <string> Org unit         (default: "Managed WiFi")
  *   --key-bits  <n>      RSA key size     (default: 2048)
  *   --days      <n>      Validity in days (default: 1825 = 5 years)
- *   --skip-env           Do not update .env
  *   --force              Overwrite existing files
  */
 
@@ -60,13 +61,11 @@ function arg(name, fallback) {
 function flag(name) { return argv.includes(`--${name}`); }
 
 const OUT_DIR   = resolve(ROOT, arg("out-dir",  "ops/dev-ca"));
-const ENV_PATH  = resolve(ROOT, arg("env-path", ".env"));
 const CN        = arg("cn",       "RadiusOps Dev Device CA");
 const ORG       = arg("org",      "RadiusOps");
 const OU        = arg("ou",       "Managed WiFi");
 const KEY_BITS  = parseInt(arg("key-bits", "2048"), 10);
 const DAYS      = parseInt(arg("days",     String(5 * 365)), 10);
-const SKIP_ENV  = flag("skip-env");
 const FORCE     = flag("force");
 
 // ── Find OpenSSL ──────────────────────────────────────────────────────────────
@@ -119,29 +118,6 @@ function findOpenSSL() {
     "  Windows: install Git for Windows → https://git-scm.com  (includes openssl.exe)\n" +
     "           or Chocolatey: choco install openssl\n"
   );
-}
-
-// ── .env PEM writer ───────────────────────────────────────────────────────────
-// Replaces KEY="<old PEM>" (possibly spanning multiple lines) or appends.
-
-function updateEnvPem(envPath, key, pem) {
-  let content = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
-
-  const quoted   = `"${pem}"`;
-  const esc      = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const reMulti  = new RegExp(`^[ \\t]*${esc}="[\\s\\S]*?"`, "m");
-  const reEmpty  = new RegExp(`^[ \\t]*${esc}=[ \\t]*$`,     "m");
-
-  if (reMulti.test(content)) {
-    content = content.replace(reMulti, `${key}=${quoted}`);
-  } else if (reEmpty.test(content)) {
-    content = content.replace(reEmpty, `${key}=${quoted}`);
-  } else {
-    if (content && !content.endsWith("\n")) content += "\n";
-    content += `${key}=${quoted}\n`;
-  }
-
-  writeFileSync(envPath, content, "utf8");
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -223,18 +199,25 @@ try {
   rmSync(tmpDir, { recursive: true, force: true });
 }
 
-// 4. Read PEM files and embed into .env
-const certPem = readFileSync(certFile, "utf8");
-const keyPem  = readFileSync(keyFile,  "utf8");
+// 4. Copy output files to OUT_DIR
+mkdirSync(OUT_DIR, { recursive: true });
+const outCert = join(OUT_DIR, "ca.pem");
+const outKey  = join(OUT_DIR, "ca.key");
 
-if (!SKIP_ENV) {
-  info(`Updating ${ENV_PATH}…`);
-  updateEnvPem(ENV_PATH, "DEVICE_CERT_CA_CERT_PEM", certPem);
-  updateEnvPem(ENV_PATH, "DEVICE_CERT_CA_KEY_PEM",  keyPem);
-  ok(".env updated  →  DEVICE_CERT_CA_CERT_PEM + DEVICE_CERT_CA_KEY_PEM");
+if (!FORCE && (existsSync(outCert) || existsSync(outKey))) {
+  warn(`Output files already exist in ${OUT_DIR} — use --force to overwrite.`);
 } else {
-  warn("--skip-env set: .env was not modified.");
+  writeFileSync(outCert, readFileSync(certFile));
+  writeFileSync(outKey,  readFileSync(keyFile));
+  ok(`CA certificate  →  ${outCert}`);
+  ok(`CA private key  →  ${outKey}`);
 }
 
-process.stdout.write(`\n${BOLD}Done.${RESET}  Next step — generate a test client cert:\n`);
-process.stdout.write(`  ${CYAN}pnpm lab:client-cert${RESET}\n\n`);
+process.stdout.write(`\n${BOLD}Done.${RESET}\n\n`);
+process.stdout.write(`Next step — upload the CA to the admin panel:\n\n`);
+process.stdout.write(`  1. Open the admin dashboard\n`);
+process.stdout.write(`  2. Go to  ${CYAN}Admin → Settings → CA Certificate${RESET}\n`);
+process.stdout.write(`  3. Paste the contents of ${CYAN}${outCert}${RESET}  into "CA Certificate"\n`);
+process.stdout.write(`  4. Paste the contents of ${CYAN}${outKey}${RESET}   into "CA Private Key"\n`);
+process.stdout.write(`  5. Click Save\n\n`);
+process.stdout.write(`Or, if you just want auto-generated certs, click "Generate" in the admin panel — no script needed.\n\n`);

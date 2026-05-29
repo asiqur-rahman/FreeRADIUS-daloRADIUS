@@ -412,93 +412,15 @@ if ($telegramConfigured) {
   Write-Check WARN "Telegram" "not configured; dashboard approval still works"
 }
 
-function Test-CaMaterialConfigured {
-  param([hashtable]$EnvValues)
-
-  return (
-    -not [string]::IsNullOrWhiteSpace($EnvValues["DEVICE_CERT_CA_CERT_PATH"]) -and
-    -not [string]::IsNullOrWhiteSpace($EnvValues["DEVICE_CERT_CA_KEY_PATH"])
-  ) -or (
-    -not [string]::IsNullOrWhiteSpace($EnvValues["DEVICE_CERT_CA_CERT_PEM"]) -and
-    -not [string]::IsNullOrWhiteSpace($EnvValues["DEVICE_CERT_CA_KEY_PEM"])
-  )
-}
-
-function Resolve-ConfiguredPath {
-  param(
-    [string]$BaseDirectory,
-    [string]$CandidatePath
-  )
-
-  if ([System.IO.Path]::IsPathRooted($CandidatePath)) {
-    return $CandidatePath
-  }
-
-  return [System.IO.Path]::GetFullPath((Join-Path $BaseDirectory $CandidatePath))
-}
-
-function Get-MissingCaPaths {
-  param(
-    [hashtable]$EnvValues,
-    [string]$BaseDirectory
-  )
-
-  $missing = @()
-
-  foreach ($entry in @(
-    @{ Key = "DEVICE_CERT_CA_CERT_PATH"; Label = "cert" },
-    @{ Key = "DEVICE_CERT_CA_KEY_PATH"; Label = "key" }
-  )) {
-    $value = $EnvValues[$entry.Key]
-    if ([string]::IsNullOrWhiteSpace($value)) {
-      continue
-    }
-
-    $resolved = Resolve-ConfiguredPath -BaseDirectory $BaseDirectory -CandidatePath $value
-    if (-not (Test-Path $resolved)) {
-      $missing += "$($entry.Label) path missing: $value"
-    }
-  }
-
-  return $missing
-}
-
-$rootCaConfigured = Test-CaMaterialConfigured $rootEnv
-$apiCaConfigured = Test-CaMaterialConfigured $apiEnv
-$deviceCaConfigured = $rootCaConfigured -or $apiCaConfigured
-if ($deviceCaConfigured) {
-  $missingCaPaths = @()
-  if ($rootCaConfigured) {
-    $missingCaPaths += Get-MissingCaPaths -EnvValues $rootEnv -BaseDirectory (Get-Location).Path
-  }
-  if ($apiCaConfigured) {
-    $missingCaPaths += Get-MissingCaPaths -EnvValues $apiEnv -BaseDirectory (Join-Path (Get-Location).Path "apps/api")
-  }
-
-  if ($missingCaPaths.Count -gt 0) {
-    Write-Check FAIL "Device CA material" ($missingCaPaths -join "; ")
-    $failures++
-  } else {
-  $scope = if ($apiCaConfigured -and $rootCaConfigured) {
-    "root .env and apps/api/.env"
-  } elseif ($apiCaConfigured) {
-    "apps/api/.env"
-  } else {
-    "root .env"
-  }
-  Write-Check PASS "Device CA material" "configured via $scope"
-  }
-} else {
-  Write-Check WARN "Device CA material" "not configured; run pnpm lab:device-ca for a local EAP-TLS lab CA"
-}
+# Device CA is DB-backed — configure via Admin → Settings → CA Certificate.
+# In dev mode it auto-generates on first cert issuance.
+Write-Check INFO "Device CA (EAP-TLS)" "configure via Admin -> Settings -> CA Certificate"
 
 $opensslAvailable = Test-CommandAvailable "openssl"
 if ($opensslAvailable) {
   Write-Check PASS "OpenSSL CLI" "available for dashboard-issued client certificates"
-} elseif ($deviceCaConfigured) {
-  Write-Check WARN "OpenSSL CLI" "missing; local import-based EAP-TLS works, but dashboard-issued certs stay unavailable"
 } else {
-  Write-Check WARN "OpenSSL CLI" "missing; install it before relying on dashboard-issued client certificates"
+  Write-Check WARN "OpenSSL CLI" "missing; install it before using dashboard-issued EAP-TLS certificates"
 }
 
 $dockerVersion = $script:DockerRuntime
