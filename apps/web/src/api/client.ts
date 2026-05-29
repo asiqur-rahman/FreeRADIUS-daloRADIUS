@@ -83,3 +83,50 @@ export async function api<T>(path: string, opts: RequestOpts = {}): Promise<T> {
 
   return data as T;
 }
+
+/**
+ * Fetches a non-JSON resource (e.g. a PEM file, PKCS#12 bundle) and
+ * triggers a browser download.  Shares the same auth / 401-retry logic
+ * as `api()` so tokens are refreshed automatically.
+ */
+export async function apiDownload(
+  path: string,
+  filename: string,
+  opts: Pick<RequestOpts, "token" | "signal"> & { _retry?: boolean } = {},
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: "GET",
+    headers,
+    credentials: "include",
+    signal: opts.signal,
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 && !opts._retry && _refreshFn) {
+      const newToken = await doRefresh();
+      if (newToken) {
+        return apiDownload(path, filename, { ...opts, token: newToken, _retry: true });
+      }
+    }
+    const text = await res.text();
+    const data = text ? (JSON.parse(text) as unknown) : undefined;
+    const payload: ApiError =
+      data && typeof data === "object" && "error" in data
+        ? (data as ApiError)
+        : { error: "unknown", message: res.statusText };
+    throw new ApiCallError(res.status, payload);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

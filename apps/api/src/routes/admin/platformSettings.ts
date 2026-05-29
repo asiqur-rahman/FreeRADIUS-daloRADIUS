@@ -21,6 +21,7 @@ import {
   loadCa,
   invalidateCaCache,
 } from "../../lib/ca.js";
+import { prisma } from "../../db.js";
 import { BadRequest } from "../../lib/errors.js";
 
 function maskSecret(value: string | null): string | null {
@@ -114,7 +115,6 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
 
       if (regenerate) {
         // Force re-generation: clear DB entry so loadCa() falls through to auto-gen.
-        const { prisma } = await import("../../db.js");
         await prisma.platformSetting.deleteMany({
           where: { key: { in: ["ca.cert_pem", "ca.key_pem", "ca.key_passphrase"] } },
         });

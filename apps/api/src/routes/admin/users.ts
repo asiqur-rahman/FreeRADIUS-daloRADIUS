@@ -33,6 +33,7 @@ const CreateUserBody = z.object({
   fullName: z.string().max(120).optional(),
   password: passwordSchema,
   role: z.enum(["admin", "user"]).optional(),
+  status: z.enum(["pending", "active"]).optional(),
   groupIds: z.array(z.string()).optional(),
   validFrom: z.string().datetime().nullable().optional(),
   validUntil: z.string().datetime().nullable().optional(),
@@ -154,7 +155,7 @@ const adminUsers: FastifyPluginAsync = async (app) => {
           email: body.email.toLowerCase(),
           fullName: body.fullName,
           role: body.role ?? "user",
-          status: "active",
+          status: body.status ?? "active",
           validFrom: body.validFrom ? new Date(body.validFrom) : null,
           validUntil: body.validUntil ? new Date(body.validUntil) : null,
           secret: {

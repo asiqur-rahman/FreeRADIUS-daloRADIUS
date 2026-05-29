@@ -621,8 +621,9 @@ function SamlPanel({ token }: { token: string }) {
     } finally { setSaving(false); }
   };
 
-  const metadataUrl = `${window.location.origin}/api/v1/saml/metadata`;
-  const loginUrl    = `${window.location.origin}/api/v1/saml/login`;
+  const apiBase     = import.meta.env.VITE_API_URL ?? window.location.origin;
+  const metadataUrl = `${apiBase}/api/v1/saml/metadata`;
+  const loginUrl    = `${apiBase}/api/v1/saml/login`;
 
   const f = (key: keyof SamlSettingsResponse) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((p) => ({ ...p, [key]: e.target.value }));
@@ -657,7 +658,7 @@ function SamlPanel({ token }: { token: string }) {
           <div className="space-y-1 rounded-lg border border-zinc-800 bg-zinc-950/30 px-4 py-3 text-xs">
             <p className="text-zinc-400 font-medium">SP endpoints (register these with your IdP):</p>
             <p className="text-zinc-300 font-mono">Metadata: {metadataUrl}</p>
-            <p className="text-zinc-300 font-mono">ACS URL: {window.location.origin}/api/v1/saml/callback</p>
+            <p className="text-zinc-300 font-mono">ACS URL: {apiBase}/api/v1/saml/callback</p>
             <p className="text-zinc-300 font-mono">SSO Login: {loginUrl}</p>
           </div>
 

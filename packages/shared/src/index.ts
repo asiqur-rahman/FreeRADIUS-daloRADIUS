@@ -58,6 +58,7 @@ export interface CreateUserRequest {
   fullName?: string;
   password: string;
   role?: UserRole;
+  status?: "active" | "pending";
   groupIds?: string[];
   validFrom?: string | null;
   validUntil?: string | null;

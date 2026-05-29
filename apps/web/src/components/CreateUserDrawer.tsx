@@ -64,10 +64,8 @@ export function CreateUserDrawer({ groups, token, onClose, onCreated }: Props) {
   const [password, setPassword]   = useState(randomPassword());
   const [showPwd, setShowPwd]     = useState(false);
   const [role, setRole]           = useState<UserRole>("user");
-  const [groupIds, setGroupIds]   = useState<string[]>(() => {
-    // pre-tick any default groups
-    return [];
-  });
+  const [status, setStatus]       = useState<"active" | "pending">("active");
+  const [groupIds, setGroupIds]   = useState<string[]>([]);
   const [validFrom, setValidFrom]   = useState("");
   const [validUntil, setValidUntil] = useState("");
 
@@ -114,6 +112,7 @@ export function CreateUserDrawer({ groups, token, onClose, onCreated }: Props) {
         fullName: fullName.trim() || undefined,
         password,
         role,
+        status,
         groupIds: groupIds.length ? groupIds : undefined,
         validFrom:  validFrom  ? new Date(validFrom).toISOString()  : null,
         validUntil: validUntil ? new Date(validUntil).toISOString() : null,
@@ -208,7 +207,7 @@ export function CreateUserDrawer({ groups, token, onClose, onCreated }: Props) {
               </Field>
 
               <Field label="Initial status">
-                <Select defaultValue="active">
+                <Select value={status} onChange={(e) => setStatus(e.target.value as "active" | "pending")}>
                   <option value="active">Active</option>
                   <option value="pending">Pending</option>
                 </Select>

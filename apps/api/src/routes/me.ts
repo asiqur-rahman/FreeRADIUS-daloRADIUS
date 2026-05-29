@@ -1,7 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────
-//  Self-service routes (/api/v1/me/...).
-//  Password change remains here; Phase 3 device and session routes are
-//  registered alongside this plugin in meDevices.ts.
+//  Self-service core routes (/api/v1/me/...).
+//
+//  Registered here:
+//    POST /me/password  — change own password
+//    GET  /me/wifi-ca   — download the WiFi CA cert (for EAP-TLS setup)
+//
+//  Related plugins (registered alongside in server.ts):
+//    meDevices.ts  — /me/devices, /me/sessions
+//    meCerts.ts    — /me/certs  (user-level EAP-TLS certificates)
 // ─────────────────────────────────────────────────────────────────────
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, CalendarClock, Check, Copy, Eye, EyeOff, KeyRound,
+  AlertTriangle, Check, Copy, Eye, EyeOff, KeyRound,
   Plus, RefreshCw, Shield, ShieldOff, Trash2, User, X,
 } from "lucide-react";
 import type { GroupSummary, ProvisionUserCertResponse, UserClientCert, UserRole, UserStatus, UserSummary } from "@app/shared";
-import { listUserCerts, provisionUserCert, resetUserPassword, revokeUserCert, updateUser } from "../api/endpoints";
+import { listUserCerts, provisionUserCert, revokeUserCert, updateUser } from "../api/endpoints";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -413,7 +413,7 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
           {/* ── WiFi Certificates ── */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-semibold">WiFi Certificates (EAP-TLS)</h3>
+              <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-semibold">WiFi Certificate — works on all devices</h3>
               <button
                 type="button"
                 onClick={handleProvisionCert}

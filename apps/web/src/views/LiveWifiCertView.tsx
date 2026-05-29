@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { ProvisionUserCertResponse, UserClientCert } from "@app/shared";
 import { listMyCerts, provisionMyCert, revokeMyCert } from "../api/endpoints";
+import { apiDownload } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 function CertStatusBadge({ cert }: { cert: UserClientCert }) {
@@ -287,25 +288,9 @@ export function LiveWifiCertView() {
   const downloadCa = async () => {
     if (!token) return;
     try {
-      const base = import.meta.env.VITE_API_URL ?? "";
-      const res = await fetch(`${base}/api/v1/me/wifi-ca`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setNotice({ ok: false, text: "CA certificate not available on this server." });
-        return;
-      }
-      const text = await res.text();
-      const blob = new Blob([text], { type: "application/x-pem-file" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "wifi-ca.pem";
-      a.click();
-      URL.revokeObjectURL(url);
+      await apiDownload("/api/v1/me/wifi-ca", "wifi-ca.pem", { token });
     } catch {
-      setNotice({ ok: false, text: "Failed to download CA certificate." });
+      setNotice({ ok: false, text: "CA certificate not available on this server." });
     }
   };
 

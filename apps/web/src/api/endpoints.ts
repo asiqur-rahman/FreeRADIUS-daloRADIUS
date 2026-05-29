@@ -11,10 +11,6 @@ import type {
   CreateDeviceRequest,
   AuthenticationEvent,
   AuditLogEntry,
-  DeviceCertificateBundleResponse,
-  DeviceCertificateClearResponse,
-  DeviceCertificateImportRequest,
-  DeviceCertificateImportResponse,
   DeviceApprovalEntry,
   DeviceDecisionRequest,
   SessionDisconnectResponse,
@@ -35,7 +31,6 @@ import type {
   UserClientCert,
   UserDevice,
   UserSummary,
-  GenerateDeviceCertificateRequest,
   UpdateUserRequest,
 } from "@app/shared";
 export type { CaInfo, PlatformSettingsResponse };
@@ -58,12 +53,6 @@ export function createUser(token: string, body: CreateUserRequest) {
 export function updateUser(token: string, id: string, body: UpdateUserRequest) {
   return api<UserSummary>(`${v1}/admin/users/${id}`, { method: "PATCH", token, body });
 }
-export function resetUserPassword(token: string, id: string, newPassword: string) {
-  return api<{ ok: boolean }>(`${v1}/admin/users/${id}/reset-password`, {
-    method: "POST", token, body: { newPassword },
-  });
-}
-
 // ── Self-service certs (user portal) ─────────────────────────────────
 export function listMyCerts(token: string) {
   return api<UserClientCert[]>(`${v1}/me/certs`, { token });
@@ -181,32 +170,6 @@ export function listDeviceApprovals(
   const qs = params.toString();
   return api<Paginated<DeviceApprovalEntry>>(`${v1}/admin/approvals${qs ? `?${qs}` : ""}`, { token });
 }
-export function importAdminDeviceCertificate(token: string, id: string, body: DeviceCertificateImportRequest) {
-  return api<DeviceCertificateImportResponse>(`${v1}/admin/devices/${id}/certificate/import`, {
-    method: "POST",
-    token,
-    body,
-  });
-}
-export function generateAdminDeviceCertificate(
-  token: string,
-  id: string,
-  body: GenerateDeviceCertificateRequest,
-) {
-  return api<DeviceCertificateBundleResponse>(`${v1}/admin/devices/${id}/certificate/generate`, {
-    method: "POST",
-    token,
-    body,
-  });
-}
-export function clearAdminDeviceCertificate(token: string, id: string, notes?: string | null) {
-  return api<DeviceCertificateClearResponse>(`${v1}/admin/devices/${id}/certificate`, {
-    method: "DELETE",
-    token,
-    body: notes ? { notes } : {},
-  });
-}
-
 // -- Self-service devices ----------------------------------------------------
 export function listMyDevices(token: string) {
   return api<UserDevice[]>(`${v1}/me/devices`, { token });
