@@ -17,35 +17,39 @@ function writeSeedLine(message: string) {
 }
 
 export async function runSeed() {
-  // No Session-Timeout on Staff or Family — sessions are unlimited unless
-  // the admin explicitly adds the attribute via the group editor.
-  const staff = await prisma.group.upsert({
-    where: { name: "Staff" },
-    update: { description: "Default employee group", isDefault: true },
-    create: {
-      name: "Staff",
-      description: "Default employee group",
-      isDefault: true,
-    },
-  });
+  // ── Default RADIUS policy groups ────────────────────────────────────────
+  //
+  // Only two groups are seeded.  Admins can create additional groups freely
+  // via the Groups & Policy view — groups are fully dynamic.
+  //
+  // Guest (isDefault: true)
+  //   New users start here automatically.  Add attributes such as
+  //   Session-Timeout or bandwidth limits to restrict guest access.
+  //
+  // Family
+  //   Full-access group for household members.  Admin assigns manually.
+  //   Add reply attributes (e.g. Tunnel-Type, VLAN) for network separation.
+  //
+  // Sessions are unlimited on both groups by default — add Session-Timeout
+  // via the group attribute editor, or use User.validUntil for per-user expiry.
 
-  // Guest is unlimited by default too.  Admin can add Session-Timeout or set
-  // validUntil on individual guest user accounts.
   const guest = await prisma.group.upsert({
     where: { name: "Guest" },
-    update: { description: "Guest access" },
+    update: { description: "Guest / visitor WiFi access", isDefault: true },
     create: {
       name: "Guest",
-      description: "Guest access",
+      description: "Guest / visitor WiFi access",
+      isDefault: true,
     },
   });
 
   const family = await prisma.group.upsert({
     where: { name: "Family" },
-    update: { description: "Family / home members" },
+    update: { description: "Family / household members — full access", isDefault: false },
     create: {
       name: "Family",
-      description: "Family / home members",
+      description: "Family / household members — full access",
+      isDefault: false,
     },
   });
 
@@ -88,7 +92,7 @@ export async function runSeed() {
         },
       },
       groups: {
-        create: { groupId: staff.id, priority: 1 },
+        create: { groupId: family.id, priority: 1 },
       },
     },
   });
@@ -119,7 +123,7 @@ export async function runSeed() {
         },
       },
       groups: {
-        create: { groupId: staff.id, priority: 1 },
+        create: { groupId: family.id, priority: 1 },
       },
     },
   });
@@ -142,7 +146,6 @@ export async function runSeed() {
     : null;
 
   await prisma.$transaction(async (tx) => {
-    await syncGroupToRadius(tx, staff.id);
     await syncGroupToRadius(tx, guest.id);
     await syncGroupToRadius(tx, family.id);
     await syncUserToRadius(tx, admin.id);

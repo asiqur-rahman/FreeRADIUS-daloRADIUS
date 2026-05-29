@@ -22,7 +22,6 @@ datasource db {
 enum UserRole {
   admin
   user
-  guest
 }
 
 enum UserStatus {
@@ -84,7 +83,7 @@ model User {
   username    String     @unique @db.VarChar(64)
   email       String     @unique @db.VarChar(254)
   fullName    String?    @db.VarChar(120)
-  role        UserRole   @default(guest)
+  role        UserRole   @default(user)
   status      UserStatus @default(active)
   validFrom   DateTime?
   validUntil  DateTime?

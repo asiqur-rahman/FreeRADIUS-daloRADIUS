@@ -5,7 +5,7 @@
 //  browser. No Prisma imports, no Fastify imports, no DOM imports.
 // ─────────────────────────────────────────────────────────────────────
 
-export type UserRole = "admin" | "user" | "guest";
+export type UserRole = "admin" | "user";
 
 export type UserStatus = "pending" | "active" | "suspended" | "expired";
 
