@@ -64,13 +64,15 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
+  username?: string;
   email?: string;
-  fullName?: string;
+  fullName?: string | null;
   status?: UserStatus;
   role?: UserRole;
   validFrom?: string | null;
   validUntil?: string | null;
   groupIds?: string[];
+  newPassword?: string;
 }
 
 // ── Groups & policy ──────────────────────────────────────────────────
@@ -357,4 +359,60 @@ export interface MfaStatus {
 export interface MfaSetupResponse {
   secret: string;
   otpauthUri: string;
+}
+
+// ── User-level client certificates (EAP-TLS) ─────────────────────────
+
+export interface UserClientCert {
+  id: string;
+  fingerprint: string;
+  commonName: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ProvisionUserCertRequest {
+  notes?: string | null;
+  pkcs12Password?: string | null;
+}
+
+export interface ProvisionUserCertResponse {
+  fingerprint: string;
+  commonName: string;
+  expiresAt: string;
+  certificatePem: string;
+  privateKeyPem: string;
+  pkcs12Base64: string;
+  pkcs12Password: string;
+}
+
+// ── Platform settings ────────────────────────────────────────────────
+
+export type CaSource = "db" | "env" | "auto";
+
+export interface CaInfo {
+  configured:  boolean;
+  source:      CaSource | null;
+  subject:     string | null;
+  issuer:      string | null;
+  expiresAt:   string | null;
+  fingerprint: string | null;
+}
+
+export interface PlatformSettingsResponse {
+  telegram: {
+    botToken:    string | null;
+    adminChatId: string | null;
+    configured:  boolean;
+  };
+  ca: CaInfo;
+}
+
+export interface UpdateCaRequest {
+  certPem?:       string;
+  keyPem?:        string;
+  keyPassphrase?: string | null;
+  regenerate?:    boolean;
 }

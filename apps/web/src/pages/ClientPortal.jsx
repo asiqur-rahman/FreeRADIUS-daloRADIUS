@@ -10,6 +10,7 @@ import { SelfServiceDevices } from '../views/SelfServiceDevices';
 import { LivePortalOverview } from '../views/LivePortalOverview';
 import { LiveSecurityView } from '../views/LiveSecurityView';
 import { LiveProfileView } from '../views/LiveProfileView';
+import { LiveWifiCertView } from '../views/LiveWifiCertView';
 
 // ─── DATA ──────────────────────────────────────────────────────────────────
 const me = {
@@ -375,6 +376,11 @@ function SecurityTab({ live = true }) {
   );
 }
 
+function WifiCertTab({ live = true }) {
+  if (live) return <LiveWifiCertView/>;
+  return null;
+}
+
 function ProfileTab({ live = true }) {
   if (live) return <LiveProfileView/>;
   return (
@@ -492,6 +498,7 @@ export default function ClientPortal() {
           <div className="flex overflow-x-auto p-1.5 bg-stone-100 rounded-2xl gap-1" style={{scrollbarWidth:'none'}}>
             <Tab active={tab==='overview'} onClick={()=>setTab('overview')} icon={Activity} label="Overview"/>
             <Tab active={tab==='devices'} onClick={()=>setTab('devices')} icon={Smartphone} label="Devices"/>
+            <Tab active={tab==='wifi'} onClick={()=>setTab('wifi')} icon={Wifi} label="WiFi Cert"/>
             <Tab active={tab==='security'} onClick={()=>setTab('security')} icon={Shield} label="Security"/>
             <Tab active={tab==='profile'} onClick={()=>setTab('profile')} icon={User} label="Profile"/>
           </div>
@@ -501,6 +508,7 @@ export default function ClientPortal() {
         <main className="max-w-6xl mx-auto px-4 sm:px-8 pb-16">
           {tab === 'overview' && <OverviewTab/>}
           {tab === 'devices' && <DevicesTab/>}
+          {tab === 'wifi' && <WifiCertTab/>}
           {tab === 'security' && <SecurityTab/>}
           {tab === 'profile' && <ProfileTab/>}
         </main>

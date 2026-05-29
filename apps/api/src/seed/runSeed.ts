@@ -21,7 +21,7 @@ export async function runSeed() {
   // the admin explicitly adds the attribute via the group editor.
   const staff = await prisma.group.upsert({
     where: { name: "Staff" },
-    update: {},
+    update: { description: "Default employee group", isDefault: true },
     create: {
       name: "Staff",
       description: "Default employee group",
@@ -33,7 +33,7 @@ export async function runSeed() {
   // validUntil on individual guest user accounts.
   const guest = await prisma.group.upsert({
     where: { name: "Guest" },
-    update: {},
+    update: { description: "Guest access" },
     create: {
       name: "Guest",
       description: "Guest access",
@@ -42,7 +42,7 @@ export async function runSeed() {
 
   const family = await prisma.group.upsert({
     where: { name: "Family" },
-    update: {},
+    update: { description: "Family / home members" },
     create: {
       name: "Family",
       description: "Family / home members",

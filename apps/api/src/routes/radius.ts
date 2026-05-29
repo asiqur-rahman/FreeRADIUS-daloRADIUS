@@ -117,6 +117,15 @@ async function createPendingApproval(deviceId: string, request: {
   mac: string;
   nasIp: string;
 }) {
+  // Idempotency: don't create a second pending approval for the same device.
+  // Concurrent RADIUS requests for the same MAC can both reach this path
+  // before either has committed — at-most-once is good enough here.
+  const existing = await prisma.deviceApproval.findFirst({
+    where: { deviceId, status: "pending" },
+    select: { id: true },
+  });
+  if (existing) return;
+
   const approval = await prisma.deviceApproval.create({
     data: { deviceId, status: "pending" },
   });
@@ -297,84 +306,117 @@ async function authorizeEapTls(
     },
   });
 
-  if (!device || device.user.status !== "active") {
-    req.log.info(
-      {
+  // ── Path 1: device-bound cert (certFingerprint on user_devices) ──────
+  if (device) {
+    if (device.user.status !== "active") {
+      req.log.info({ mac: normalizedMac, fingerprint: certificate.fingerprint }, "radius.authorize eap-tls user inactive");
+      return reply.status(403).send({ error: "User inactive" });
+    }
+
+    if (device.mac !== normalizedMac) {
+      req.log.info(
+        { username: device.user.username, expectedMac: device.mac, presentedMac: normalizedMac, fingerprint: certificate.fingerprint },
+        "radius.authorize eap-tls mac mismatch",
+      );
+      return reply.status(403).send({ error: "Certificate presented from an unexpected device" });
+    }
+
+    if (device.status === "rejected") {
+      req.log.info({ username: device.user.username, mac: normalizedMac, fingerprint: certificate.fingerprint }, "radius.authorize eap-tls device rejected");
+      return reply.status(403).send({ error: "Device rejected" });
+    }
+
+    await prisma.userDevice.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
+
+    if (device.status === "pending" && device.approvals.length === 0) {
+      req.log.info({ username: device.user.username, mac: normalizedMac, deviceId: device.id }, "radius.eap_tls.pending_device");
+      createPendingApproval(device.id, {
+        username: device.user.username,
+        fullName: device.user.fullName,
         mac: normalizedMac,
-        fingerprint: certificate.fingerprint,
-        commonName: certificate.commonName,
+        nasIp: body.nasIp,
+      }).catch((err) => {
+        req.log.error({ err, deviceId: device.id }, "radius.eap_tls.pending_notify failed");
+      });
+    }
+
+    const replyAttrs = replyForDevice(device.user.groups, device.status);
+    req.log.info(
+      { username: device.user.username, mac: normalizedMac, deviceStatus: device.status, authMethod: "eap-tls", certFingerprint: certificate.fingerprint },
+      "radius.authorize eap-tls",
+    );
+    return reply.status(200).send({ ...replyAttrs });
+  }
+
+  // ── Path 2: user-level cert (user_client_certs) — MAC-agnostic ────────
+  const userCert = await prisma.userClientCert.findUnique({
+    where: { fingerprint: certificate.fingerprint },
+    include: {
+      user: {
+        include: {
+          groups: {
+            include: { group: { include: { attributes: true } } },
+            orderBy: { priority: "asc" },
+          },
+        },
       },
+    },
+  });
+
+  if (!userCert || userCert.user.status !== "active") {
+    req.log.info(
+      { mac: normalizedMac, fingerprint: certificate.fingerprint, commonName: certificate.commonName },
       "radius.authorize eap-tls certificate not registered",
     );
     return reply.status(403).send({ error: "Certificate not registered" });
   }
 
-  if (device.mac !== normalizedMac) {
+  if (userCert.revokedAt) {
     req.log.info(
-      {
-        username: device.user.username,
-        expectedMac: device.mac,
-        presentedMac: normalizedMac,
-        fingerprint: certificate.fingerprint,
-      },
-      "radius.authorize eap-tls mac mismatch",
+      { username: userCert.user.username, mac: normalizedMac, fingerprint: certificate.fingerprint },
+      "radius.authorize eap-tls user cert revoked",
     );
-    return reply.status(403).send({ error: "Certificate presented from an unexpected device" });
+    return reply.status(403).send({ error: "Certificate revoked" });
   }
 
-  if (device.status === "rejected") {
+  if (userCert.expiresAt < new Date()) {
     req.log.info(
-      {
-        username: device.user.username,
-        mac: normalizedMac,
-        fingerprint: certificate.fingerprint,
-      },
-      "radius.authorize eap-tls device rejected",
+      { username: userCert.user.username, mac: normalizedMac, fingerprint: certificate.fingerprint },
+      "radius.authorize eap-tls user cert expired",
     );
-    return reply.status(403).send({ error: "Device rejected" });
+    return reply.status(403).send({ error: "Certificate expired" });
   }
 
-  await prisma.userDevice.update({
-    where: { id: device.id },
-    data: { lastSeenAt: new Date() },
+  // Auto-register this MAC as an approved device for the cert owner.
+  const autoDevice = await prisma.userDevice.upsert({
+    where: { userId_mac: { userId: userCert.userId, mac: normalizedMac } },
+    create: {
+      userId: userCert.userId,
+      mac: normalizedMac,
+      status: "approved",
+      certFingerprint: certificate.fingerprint,
+      lastSeenAt: new Date(),
+      verifiedAt: new Date(),
+      label: `EAP-TLS ${certificate.commonName ?? ""}`.slice(0, 80).trim(),
+    },
+    update: { lastSeenAt: new Date(), status: "approved" },
   });
 
-  if (device.status === "pending" && device.approvals.length === 0) {
-    req.log.info(
-      {
-        username: device.user.username,
-        mac: normalizedMac,
-        deviceId: device.id,
-      },
-      "radius.eap_tls.pending_device",
-    );
-    createPendingApproval(device.id, {
-      username: device.user.username,
-      fullName: device.user.fullName,
-      mac: normalizedMac,
-      nasIp: body.nasIp,
-    }).catch((err) => {
-      req.log.error({ err, deviceId: device.id }, "radius.eap_tls.pending_notify failed");
-    });
-  }
-
-  const replyAttrs = replyForDevice(device.user.groups, device.status);
-
+  const replyAttrs = replyFromGroups(userCert.user.groups);
   req.log.info(
     {
-      username: device.user.username,
+      username: userCert.user.username,
       mac: normalizedMac,
-      deviceStatus: device.status,
+      deviceId: autoDevice.id,
       authMethod: "eap-tls",
       certCommonName: certificate.commonName,
       certFingerprint: certificate.fingerprint,
+      autoRegistered: true,
     },
-    "radius.authorize eap-tls",
+    "radius.authorize eap-tls user-cert auto-approved",
   );
 
-  // EAP-TLS: no password check needed — cert already validated by FreeRADIUS.
-  const response: FlatRlmResponse = { ...replyAttrs };
-  return reply.status(200).send(response);
+  return reply.status(200).send({ ...replyAttrs });
 }
 
 const radiusRoutes: FastifyPluginAsync = async (app) => {

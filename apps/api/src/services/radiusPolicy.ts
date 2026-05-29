@@ -67,6 +67,11 @@ async function syncUserGroupMapping(tx: Tx, username: string, groupNames: string
   }
 }
 
+/** Remove all RADIUS rows for a username (used before renaming a user). */
+export async function purgeRadiusUsername(tx: Tx, username: string): Promise<void> {
+  await deleteRadcheckRows(tx, username);
+}
+
 // ── Public API ─────────────────────────────────────────────────────
 
 interface PasswordChangeOpts {

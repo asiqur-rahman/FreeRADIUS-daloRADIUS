@@ -11,7 +11,7 @@ import { prisma } from "../../db.js";
 import { hashPassword, ntHash } from "../../lib/password.js";
 import { audit } from "../../lib/audit.js";
 import { BadRequest, NotFound } from "../../lib/errors.js";
-import { changeUserPassword, syncUserToRadius } from "../../services/radiusPolicy.js";
+import { changeUserPassword, purgeRadiusUsername, syncUserToRadius } from "../../services/radiusPolicy.js";
 import { disconnectForPolicyChange } from "../../services/sessions.js";
 import { config } from "../../config.js";
 import { assertPasswordNotBreached } from "../../lib/passwordPolicy.js";
@@ -39,6 +39,7 @@ const CreateUserBody = z.object({
 });
 
 const UpdateUserBody = z.object({
+  username: usernameSchema.optional(),
   email: z.string().email().max(254).optional(),
   fullName: z.string().max(120).nullable().optional(),
   role: z.enum(["admin", "user"]).optional(),
@@ -46,6 +47,7 @@ const UpdateUserBody = z.object({
   validFrom: z.string().datetime().nullable().optional(),
   validUntil: z.string().datetime().nullable().optional(),
   groupIds: z.array(z.string()).optional(),
+  newPassword: z.string().min(10).max(256).optional(),
 });
 
 const ResetPasswordBody = z.object({
@@ -200,6 +202,18 @@ const adminUsers: FastifyPluginAsync = async (app) => {
         validUntil:
           body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
       };
+
+      // Username rename: purge old RADIUS rows before saving new username
+      if (body.username) {
+        const newUsername = body.username.toLowerCase();
+        if (newUsername !== existing.username) {
+          const conflict = await tx.user.findFirst({ where: { username: newUsername, NOT: { id } } });
+          if (conflict) throw BadRequest("Username already taken");
+          await purgeRadiusUsername(tx, existing.username);
+          data.username = newUsername;
+        }
+      }
+
       await tx.user.update({ where: { id }, data });
 
       if (body.groupIds) {
@@ -225,6 +239,18 @@ const adminUsers: FastifyPluginAsync = async (app) => {
       });
       return after!;
     });
+
+    // Optional inline password reset (sent from the all-in-one edit form)
+    if (body.newPassword) {
+      await assertPasswordNotBreached(body.newPassword);
+      await changeUserPassword({
+        userId: id,
+        newPassword: body.newPassword,
+        actorId,
+        mustChange: false,
+        req,
+      });
+    }
 
     if (
       config().COA_DISCONNECT_ON_USER_POLICY_CHANGE &&

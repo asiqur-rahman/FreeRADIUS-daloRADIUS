@@ -4,7 +4,7 @@
 //  GET  /admin/settings/platform  — read all configurable settings
 //  PUT  /admin/settings/platform  — update settings (partial)
 //
-//  Sensitive values (bot tokens) are masked on GET.
+//  Sensitive values (bot tokens, CA keys) are masked / omitted on GET.
 // ─────────────────────────────────────────────────────────────────────
 
 import type { FastifyPluginAsync } from "fastify";
@@ -15,6 +15,13 @@ import {
   reloadTelegramPolling,
   stopTelegramPolling,
 } from "../../lib/telegram.js";
+import {
+  getCaInfo,
+  saveCaToDB,
+  loadCa,
+  invalidateCaCache,
+} from "../../lib/ca.js";
+import { BadRequest } from "../../lib/errors.js";
 
 function maskSecret(value: string | null): string | null {
   if (!value || value.length < 8) return value ? "***" : null;
@@ -28,6 +35,17 @@ const PatchBody = z.object({
       adminChatId: z.string().max(50).nullable().optional(),
     })
     .optional(),
+
+  ca: z
+    .object({
+      // Provide certPem + keyPem to upload a custom CA.
+      certPem:      z.string().max(32_768).optional(),
+      keyPem:       z.string().max(32_768).optional(),
+      keyPassphrase: z.string().max(256).nullable().optional(),
+      // Set regenerate:true to auto-generate a new dev CA (ignored in production).
+      regenerate:   z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const adminPlatformSettings: FastifyPluginAsync = async (app) => {
@@ -36,13 +54,17 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
 
   // ── GET /admin/settings/platform ────────────────────────────────
   app.get("/settings/platform", async () => {
-    const tg = await getTelegramSettings();
+    const [tg, caInfo] = await Promise.all([
+      getTelegramSettings(),
+      getCaInfo(),
+    ]);
     return {
       telegram: {
         botToken:    maskSecret(tg.botToken),
-        adminChatId: tg.adminChatId,   // not secret — just a numeric ID
+        adminChatId: tg.adminChatId,
         configured:  Boolean(tg.botToken && tg.adminChatId),
       },
+      ca: caInfo,
     };
   });
 
@@ -50,11 +72,10 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
   app.put<{ Body: z.infer<typeof PatchBody> }>("/settings/platform", async (req, reply) => {
     const body = PatchBody.parse(req.body);
 
+    // ── Telegram ──────────────────────────────────────────────────
     if (body.telegram !== undefined) {
       const current = await getTelegramSettings();
 
-      // Treat a masked token (ends with …) or unchanged display value as
-      // "no change" — the frontend sends back what it received on GET.
       const rawToken = body.telegram.botToken;
       const newToken =
         rawToken === undefined
@@ -62,7 +83,7 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
           : rawToken === null
             ? null
             : rawToken.includes("…")
-              ? undefined // masked — don't overwrite
+              ? undefined
               : rawToken.trim() || null;
 
       const newChatId =
@@ -77,25 +98,47 @@ const adminPlatformSettings: FastifyPluginAsync = async (app) => {
       if (Object.keys(changes).length > 0) {
         await saveTelegramSettings(changes);
 
-        // Only restart polling if credentials actually changed
-        const freshToken   = changes.botToken    !== undefined ? changes.botToken    : current.botToken;
-        const freshChatId  = changes.adminChatId !== undefined ? changes.adminChatId : current.adminChatId;
+        const freshToken  = changes.botToken    !== undefined ? changes.botToken    : current.botToken;
+        const freshChatId = changes.adminChatId !== undefined ? changes.adminChatId : current.adminChatId;
         if (freshToken && freshChatId) {
           await reloadTelegramPolling();
         } else {
-          // Credentials incomplete or cleared — stop any running poll loop.
           stopTelegramPolling();
         }
       }
     }
 
-    const tg = await getTelegramSettings();
+    // ── CA ────────────────────────────────────────────────────────
+    if (body.ca !== undefined) {
+      const { certPem, keyPem, keyPassphrase, regenerate } = body.ca;
+
+      if (regenerate) {
+        // Force re-generation: clear DB entry so loadCa() falls through to auto-gen.
+        const { prisma } = await import("../../db.js");
+        await prisma.platformSetting.deleteMany({
+          where: { key: { in: ["ca.cert_pem", "ca.key_pem", "ca.key_passphrase"] } },
+        });
+        invalidateCaCache();
+        await loadCa({ throwIfMissing: true }); // triggers auto-gen + save
+      } else if (certPem || keyPem) {
+        // Upload custom CA — require both halves.
+        if (!certPem?.trim())  throw BadRequest("ca.certPem is required when uploading a CA");
+        if (!keyPem?.trim())   throw BadRequest("ca.keyPem is required when uploading a CA");
+        await saveCaToDB(certPem, keyPem, keyPassphrase ?? null);
+      }
+    }
+
+    const [tg, caInfo] = await Promise.all([
+      getTelegramSettings(),
+      getCaInfo(),
+    ]);
     return reply.status(200).send({
       telegram: {
         botToken:    maskSecret(tg.botToken),
         adminChatId: tg.adminChatId,
         configured:  Boolean(tg.botToken && tg.adminChatId),
       },
+      ca: caInfo,
     });
   });
 };

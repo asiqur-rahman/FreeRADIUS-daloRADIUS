@@ -68,10 +68,6 @@ const schema = z.object({
   DEVICE_CERT_SUBJECT_STATE: z.string().transform(v => v.trim() || undefined).optional(),
   DEVICE_CERT_SUBJECT_LOCALITY: z.string().transform(v => v.trim() || undefined).optional(),
 
-  // Path to the FreeRADIUS EAP CA certificate (ca.pem).
-  // Mounted from infra/freeradius/raddb/certs — served to users for WiFi setup.
-  RADIUS_CA_CERT_PATH: z.string().transform(v => v.trim() || undefined).optional(),
-
   // When true (default), non-approved devices are rejected at RADIUS authorize
   // time rather than being quarantined on a separate VLAN.
   // Set to false only if your network infrastructure properly isolates

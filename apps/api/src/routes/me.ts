@@ -3,7 +3,6 @@
 //  Password change remains here; Phase 3 device and session routes are
 //  registered alongside this plugin in meDevices.ts.
 // ─────────────────────────────────────────────────────────────────────
-import { promises as fs } from "fs";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
@@ -12,7 +11,7 @@ import { BadRequest, Unauthorized, NotFound } from "../lib/errors.js";
 import { changeUserPassword } from "../services/radiusPolicy.js";
 import { audit } from "../lib/audit.js";
 import { assertPasswordNotBreached } from "../lib/passwordPolicy.js";
-import { config } from "../config.js";
+import { loadCa } from "../lib/ca.js";
 
 const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1),
@@ -55,20 +54,12 @@ const me: FastifyPluginAsync = async (app) => {
   });
 
   app.get("/me/wifi-ca", async (_req, reply) => {
-    const certPath = config().RADIUS_CA_CERT_PATH;
-    if (!certPath) {
-      throw NotFound("WiFi CA certificate not configured on this server");
-    }
-    let pem: string;
-    try {
-      pem = await fs.readFile(certPath, "utf8");
-    } catch {
-      throw NotFound("WiFi CA certificate file not found");
-    }
+    const ca = await loadCa();
+    if (!ca) throw NotFound("WiFi CA certificate is not configured on this server");
     reply
       .header("Content-Type", "application/x-pem-file")
       .header("Content-Disposition", 'attachment; filename="wifi-ca.pem"')
-      .send(pem);
+      .send(ca.certPem);
   });
 };
 

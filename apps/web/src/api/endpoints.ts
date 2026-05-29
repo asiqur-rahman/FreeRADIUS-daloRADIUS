@@ -3,6 +3,7 @@
 // stays decoupled from React context.
 import type {
   AdminDeviceSummary,
+  CaInfo,
   CreateGroupAttributeRequest,
   CreateGroupRequest,
   CreateNasRequest,
@@ -21,17 +22,23 @@ import type {
   GroupSummary,
   NasClient,
   Paginated,
+  PlatformSettingsResponse,
   RadiusSession,
   OperationsOverview,
   MfaSetupResponse,
   MfaStatus,
+  ProvisionUserCertRequest,
+  ProvisionUserCertResponse,
   Site,
+  UpdateCaRequest,
   UpdateDeviceRequest,
+  UserClientCert,
   UserDevice,
   UserSummary,
   GenerateDeviceCertificateRequest,
   UpdateUserRequest,
 } from "@app/shared";
+export type { CaInfo, PlatformSettingsResponse };
 import { api } from "./client";
 
 const v1 = "/api/v1";
@@ -54,6 +61,34 @@ export function updateUser(token: string, id: string, body: UpdateUserRequest) {
 export function resetUserPassword(token: string, id: string, newPassword: string) {
   return api<{ ok: boolean }>(`${v1}/admin/users/${id}/reset-password`, {
     method: "POST", token, body: { newPassword },
+  });
+}
+
+// ── Self-service certs (user portal) ─────────────────────────────────
+export function listMyCerts(token: string) {
+  return api<UserClientCert[]>(`${v1}/me/certs`, { token });
+}
+export function provisionMyCert(token: string, body: ProvisionUserCertRequest) {
+  return api<ProvisionUserCertResponse>(`${v1}/me/certs/provision`, {
+    method: "POST", token, body,
+  });
+}
+export function revokeMyCert(token: string, certId: string) {
+  return api<{ ok: boolean }>(`${v1}/me/certs/${certId}`, { method: "DELETE", token });
+}
+
+// ── Admin: user client certs (EAP-TLS) ───────────────────────────────
+export function listUserCerts(token: string, userId: string) {
+  return api<UserClientCert[]>(`${v1}/admin/users/${userId}/certs`, { token });
+}
+export function provisionUserCert(token: string, userId: string, body: ProvisionUserCertRequest) {
+  return api<ProvisionUserCertResponse>(`${v1}/admin/users/${userId}/provision-cert`, {
+    method: "POST", token, body,
+  });
+}
+export function revokeUserCert(token: string, userId: string, certId: string) {
+  return api<{ ok: boolean }>(`${v1}/admin/users/${userId}/certs/${certId}`, {
+    method: "DELETE", token,
   });
 }
 
@@ -250,14 +285,6 @@ export function deleteRadiusAllowedIp(token: string, id: string) {
 }
 
 // -- Platform settings -------------------------------------------------------
-export interface PlatformSettingsResponse {
-  telegram: {
-    botToken:    string | null;  // masked on read ("xxxx…xxxx")
-    adminChatId: string | null;
-    configured:  boolean;
-  };
-}
-
 export function getPlatformSettings(token: string) {
   return api<PlatformSettingsResponse>(`${v1}/admin/settings/platform`, { token });
 }
@@ -265,10 +292,8 @@ export function getPlatformSettings(token: string) {
 export function updatePlatformSettings(
   token: string,
   body: {
-    telegram?: {
-      botToken?:    string | null;
-      adminChatId?: string | null;
-    };
+    telegram?: { botToken?: string | null; adminChatId?: string | null };
+    ca?: UpdateCaRequest;
   },
 ) {
   return api<PlatformSettingsResponse>(`${v1}/admin/settings/platform`, {
@@ -276,6 +301,60 @@ export function updatePlatformSettings(
     token,
     body,
   });
+}
+
+// ── LDAP settings ────────────────────────────────────────────────────
+
+export interface LdapSettingsResponse {
+  url: string;
+  bindDn: string;
+  bindPassword: string;
+  userBaseDn: string;
+  userFilter: string;
+  groupBaseDn: string;
+  groupFilter: string;
+  attrUsername: string;
+  attrEmail: string;
+  attrFullname: string;
+  attrGroupName: string;
+}
+
+export function getLdapSettings(token: string) {
+  return api<LdapSettingsResponse>(`${v1}/admin/ldap/settings`, { token });
+}
+export function saveLdapSettings(token: string, body: Partial<LdapSettingsResponse>) {
+  return api<{ ok: boolean }>(`${v1}/admin/ldap/settings`, { method: "PUT", token, body });
+}
+export function testLdapConnection(token: string) {
+  return api<{ ok: boolean; error?: string }>(`${v1}/admin/ldap/test`, { method: "POST", token, body: {} });
+}
+export function runLdapSync(token: string) {
+  return api<{
+    usersFound: number; usersCreated: number; usersSkipped: number;
+    groupsCreated: number; membershipsAdded: number; errors: string[];
+  }>(`${v1}/admin/ldap/sync`, { method: "POST", token, body: {} });
+}
+
+// ── SAML settings ────────────────────────────────────────────────────
+
+export interface SamlSettingsResponse {
+  enabled: boolean;
+  entryPoint: string;
+  issuer: string;
+  cert: string;
+  spCert: string;
+  spKey: string;
+  nameIdFormat: string;
+  attrUsername: string;
+  attrEmail: string;
+  attrFullname: string;
+}
+
+export function getSamlSettings(token: string) {
+  return api<SamlSettingsResponse>(`${v1}/saml/settings`, { token });
+}
+export function saveSamlSettings(token: string, body: Partial<SamlSettingsResponse>) {
+  return api<{ ok: boolean }>(`${v1}/saml/settings`, { method: "PUT", token, body });
 }
 
 // -- Account security --------------------------------------------------------

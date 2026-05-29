@@ -20,11 +20,15 @@ import adminSiteRoutes from "./routes/admin/sites.js";
 import adminCertRoutes from "./routes/admin/certs.js";
 import meRoutes from "./routes/me.js";
 import meDeviceRoutes from "./routes/meDevices.js";
+import meCertsRoutes from "./routes/meCerts.js";
 import adminSessionRoutes from "./routes/admin/sessions.js";
 import adminOperationRoutes from "./routes/admin/operations.js";
 import adminDeviceRoutes from "./routes/admin/devices.js";
 import adminRadiusAllowlistRoutes from "./routes/admin/radiusAllowlist.js";
 import adminPlatformSettingsRoutes from "./routes/admin/platformSettings.js";
+import adminUserCertsRoutes from "./routes/admin/userCerts.js";
+import adminLdapRoutes from "./routes/admin/ldap.js";
+import samlRoutes from "./routes/saml.js";
 import mfaRoutes from "./routes/mfa.js";
 import radiusRoutes from "./routes/radius.js";
 import eventsRoutes from "./routes/events.js";
@@ -74,6 +78,7 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
       await api.register(authRoutes);
       await api.register(meRoutes);
       await api.register(meDeviceRoutes);
+      await api.register(meCertsRoutes);
       await api.register(mfaRoutes);
       await api.register(adminUserRoutes, { prefix: "/admin" });
       await api.register(adminGroupRoutes, { prefix: "/admin" });
@@ -85,6 +90,9 @@ export async function buildServer(opts: FastifyServerOptions = {}) {
       await api.register(adminDeviceRoutes, { prefix: "/admin" });
       await api.register(adminRadiusAllowlistRoutes, { prefix: "/admin" });
       await api.register(adminPlatformSettingsRoutes, { prefix: "/admin" });
+      await api.register(adminUserCertsRoutes, { prefix: "/admin" });
+      await api.register(adminLdapRoutes, { prefix: "/admin" });
+      await api.register(samlRoutes);
       // FreeRADIUS rlm_rest hook — internal, protected by shared secret.
       await api.register(radiusRoutes, { prefix: "/radius" });
       // Server-Sent Events stream for admin dashboards.

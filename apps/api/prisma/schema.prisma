@@ -96,6 +96,7 @@ model User {
   secret    UserSecret?
   groups    UserGroup[]
   devices   UserDevice[]
+  clientCerts UserClientCert[]
   auditLogs AuditLog[]   @relation("AuditActor")
   events    AuthEvent[]
   tokens            ApiToken[]
@@ -327,6 +328,27 @@ model PlatformSetting {
   updatedAt DateTime @updatedAt
 
   @@map("platform_settings")
+}
+
+// ── User-level client certificates (EAP-TLS passwordless WiFi) ──────
+//   When a cert is provisioned from the admin panel, its fingerprint is
+//   stored here.  The EAP-TLS authorize hook accepts any MAC that presents
+//   a cert whose fingerprint matches — auto-registering the device.
+
+model UserClientCert {
+  id          String    @id @default(cuid())
+  userId      String
+  fingerprint String    @unique @db.VarChar(64)
+  commonName  String    @db.VarChar(255)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  notes       String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_client_certs")
 }
 
 // ── M2M tokens (Phase 1: scaffold only, not yet exposed) ────────────
