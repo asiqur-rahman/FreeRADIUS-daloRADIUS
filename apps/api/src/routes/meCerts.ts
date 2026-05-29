@@ -1,25 +1,34 @@
 // ─────────────────────────────────────────────────────────────────────
 //  Self-service: user manages their own EAP-TLS client certificates.
 //
-//  GET  /me/certs              — list own certs (id, fingerprint, status, expiry)
+//  GET  /me/certs              — list own certs (id, fingerprint, status, expiry, password)
 //  POST /me/certs/provision    — generate a new cert; returns one-time bundle
 //  DELETE /me/certs/:certId    — revoke own cert
 //
-//  The private key is returned ONCE at provision time and never stored.
-//  If the key is lost the cert must be revoked and a new one provisioned.
+//  Self-service provisioning can be disabled by an admin via
+//  Admin → Settings → Certificates → "Allow users to generate their own certs".
+//  When disabled, POST /me/certs/provision returns 403.
+//  Users can still see certs provisioned by admins (GET) and revoke their own (DELETE).
 // ─────────────────────────────────────────────────────────────────────
 
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { audit } from "../lib/audit.js";
-import { NotFound } from "../lib/errors.js";
+import { Forbidden, NotFound } from "../lib/errors.js";
 import { issueUserCert } from "../lib/userCertIssuance.js";
+import { getCertSettings } from "../lib/certSettings.js";
+import { encrypt, decrypt } from "../lib/encrypt.js";
 
 const ProvisionBody = z.object({
   pkcs12Password: z.string().max(128).nullable().optional(),
   notes:          z.string().max(500).nullable().optional(),
 });
+
+function decryptPassword(stored: string | null): string | null {
+  if (!stored) return null;
+  try { return decrypt(stored); } catch { return null; }
+}
 
 const meCerts: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", app.authenticate);
@@ -27,25 +36,37 @@ const meCerts: FastifyPluginAsync = async (app) => {
   // GET /me/certs
   app.get("/me/certs", async (req) => {
     const userId = req.currentUser!.sub;
-    const certs = await prisma.userClientCert.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-    });
+    const [rows, certSettings] = await Promise.all([
+      prisma.userClientCert.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+      }),
+      getCertSettings(),
+    ]);
 
-    return certs.map((c) => ({
-      id:          c.id,
-      fingerprint: c.fingerprint,
-      commonName:  c.commonName,
-      certPem:     c.certPem ?? null,
-      expiresAt:   c.expiresAt.toISOString(),
-      revokedAt:   c.revokedAt?.toISOString() ?? null,
-      notes:       c.notes,
-      createdAt:   c.createdAt.toISOString(),
-    }));
+    return {
+      userSelfService: certSettings.userSelfService,
+      certs: rows.map((c) => ({
+        id:             c.id,
+        fingerprint:    c.fingerprint,
+        commonName:     c.commonName,
+        certPem:        c.certPem ?? null,
+        pkcs12Password: c.revokedAt ? null : decryptPassword(c.pkcs12Password),
+        expiresAt:      c.expiresAt.toISOString(),
+        revokedAt:      c.revokedAt?.toISOString() ?? null,
+        notes:          c.notes,
+        createdAt:      c.createdAt.toISOString(),
+      })),
+    };
   });
 
   // POST /me/certs/provision
   app.post("/me/certs/provision", async (req, reply) => {
+    const certSettings = await getCertSettings();
+    if (!certSettings.userSelfService) {
+      throw Forbidden("Self-service certificate generation is disabled. Contact your administrator.");
+    }
+
     const body   = ProvisionBody.parse(req.body);
     const userId = req.currentUser!.sub;
 
@@ -63,12 +84,13 @@ const meCerts: FastifyPluginAsync = async (app) => {
 
     await prisma.userClientCert.create({
       data: {
-        userId:      userId,
-        fingerprint: bundle.fingerprint,
-        commonName:  bundle.commonName,
-        certPem:     bundle.certificatePem,
-        expiresAt:   bundle.expiresAt,
-        notes:       body.notes ?? null,
+        userId:         userId,
+        fingerprint:    bundle.fingerprint,
+        commonName:     bundle.commonName,
+        certPem:        bundle.certificatePem,
+        pkcs12Password: encrypt(bundle.pkcs12Password),
+        expiresAt:      bundle.expiresAt,
+        notes:          body.notes ?? null,
       },
     });
 

@@ -7,7 +7,8 @@
 //    this cert will be auto-registered and granted access.
 //
 //  GET  /admin/users/:id/certs
-//    List all provisioned certs for a user.
+//    List all provisioned certs for a user (includes decrypted PKCS12 password
+//    for active certs; null for revoked certs).
 //
 //  DELETE /admin/users/:id/certs/:certId
 //    Revoke a cert (marks revokedAt, blocks future EAP-TLS logins).
@@ -19,6 +20,12 @@ import { prisma } from "../../db.js";
 import { audit } from "../../lib/audit.js";
 import { NotFound } from "../../lib/errors.js";
 import { issueUserCert } from "../../lib/userCertIssuance.js";
+import { encrypt, decrypt } from "../../lib/encrypt.js";
+
+function decryptPassword(stored: string | null): string | null {
+  if (!stored) return null;
+  try { return decrypt(stored); } catch { return null; }
+}
 
 // ── Routes ─────────────────────────────────────────────────────────
 
@@ -42,14 +49,15 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
     });
 
     return certs.map((c) => ({
-      id:          c.id,
-      fingerprint: c.fingerprint,
-      commonName:  c.commonName,
-      certPem:     c.certPem ?? null,
-      expiresAt:   c.expiresAt.toISOString(),
-      revokedAt:   c.revokedAt?.toISOString() ?? null,
-      notes:       c.notes,
-      createdAt:   c.createdAt.toISOString(),
+      id:             c.id,
+      fingerprint:    c.fingerprint,
+      commonName:     c.commonName,
+      certPem:        c.certPem ?? null,
+      pkcs12Password: c.revokedAt ? null : decryptPassword(c.pkcs12Password),
+      expiresAt:      c.expiresAt.toISOString(),
+      revokedAt:      c.revokedAt?.toISOString() ?? null,
+      notes:          c.notes,
+      createdAt:      c.createdAt.toISOString(),
     }));
   });
 
@@ -68,15 +76,15 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
       pkcs12Password: body.pkcs12Password,
     });
 
-    // Store fingerprint + cert PEM (public cert only — private key is never stored)
     await prisma.userClientCert.create({
       data: {
-        userId:      id,
-        fingerprint: bundle.fingerprint,
-        commonName:  bundle.commonName,
-        certPem:     bundle.certificatePem,
-        expiresAt:   bundle.expiresAt,
-        notes:       body.notes ?? null,
+        userId:         id,
+        fingerprint:    bundle.fingerprint,
+        commonName:     bundle.commonName,
+        certPem:        bundle.certificatePem,
+        pkcs12Password: encrypt(bundle.pkcs12Password),
+        expiresAt:      bundle.expiresAt,
+        notes:          body.notes ?? null,
       },
     });
 

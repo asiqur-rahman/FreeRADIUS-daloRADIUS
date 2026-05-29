@@ -1259,6 +1259,29 @@ function CertSettingsPanel({ token }: { token: string }) {
             </div>
           )}
 
+          {/* Self-service toggle */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-3 flex items-start gap-3">
+            <div className="flex-1">
+              <div className="text-sm font-medium text-zinc-200">Allow users to generate their own WiFi certificates</div>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                When enabled, users can generate their own EAP-TLS certificate from the WiFi Certificate page.
+                When disabled, only admins can issue certs — users can still view and use certs issued for them.
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={form.userSelfService ?? true}
+              onClick={() => setForm((p) => ({ ...p, userSelfService: !(p.userSelfService ?? true) }))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 mt-0.5 ${
+                (form.userSelfService ?? true) ? "bg-violet-600" : "bg-zinc-700"
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                (form.userSelfService ?? true) ? "translate-x-6" : "translate-x-1"
+              }`} />
+            </button>
+          </div>
+
           <button
             onClick={() => void save()}
             disabled={saving || !form.organization?.trim()}

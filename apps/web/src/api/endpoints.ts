@@ -25,6 +25,7 @@ import type {
   OperationsOverview,
   MfaSetupResponse,
   MfaStatus,
+  MyCertsResponse,
   ProvisionUserCertRequest,
   ProvisionUserCertResponse,
   Site,
@@ -64,7 +65,7 @@ export function deleteUser(token: string, id: string) {
 }
 // ── Self-service certs (user portal) ─────────────────────────────────
 export function listMyCerts(token: string) {
-  return api<UserClientCert[]>(`${v1}/me/certs`, { token });
+  return api<MyCertsResponse>(`${v1}/me/certs`, { token });
 }
 export function provisionMyCert(token: string, body: ProvisionUserCertRequest) {
   return api<ProvisionUserCertResponse>(`${v1}/me/certs/provision`, {

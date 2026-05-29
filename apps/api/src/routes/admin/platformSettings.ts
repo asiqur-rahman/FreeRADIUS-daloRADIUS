@@ -62,6 +62,7 @@ const PatchBody = z.object({
       country:            z.string().max(2).nullable().optional(),
       state:              z.string().max(128).nullable().optional(),
       locality:           z.string().max(128).nullable().optional(),
+      userSelfService:    z.boolean().optional(),
     })
     .optional(),
 

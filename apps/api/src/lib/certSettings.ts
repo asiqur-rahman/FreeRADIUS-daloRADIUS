@@ -24,6 +24,7 @@ export const CERT_SETTING_KEYS = [
   "cert.subject.country",
   "cert.subject.state",
   "cert.subject.locality",
+  "cert.user_self_service",
 ] as const;
 
 export interface CertSubjectSettings {
@@ -33,6 +34,9 @@ export interface CertSubjectSettings {
   country:            string | null;
   state:              string | null;
   locality:           string | null;
+  /** When true (default), users can generate their own WiFi certs from the portal.
+   *  When false, only admins can provision certs; users can only download what was issued for them. */
+  userSelfService:    boolean;
 }
 
 export async function getCertSettings(): Promise<CertSubjectSettings> {
@@ -61,6 +65,8 @@ export async function getCertSettings(): Promise<CertSubjectSettings> {
       m["cert.subject.state"]?.trim()                    || c.DEVICE_CERT_SUBJECT_STATE    || null,
     locality:
       m["cert.subject.locality"]?.trim()                 || c.DEVICE_CERT_SUBJECT_LOCALITY || null,
+    userSelfService:
+      m["cert.user_self_service"] === undefined ? true : m["cert.user_self_service"] !== "false",
   };
 }
 
@@ -81,6 +87,8 @@ export async function saveCertSettings(settings: Partial<CertSubjectSettings>): 
     pairs.push(["cert.subject.state", (settings.state ?? "").trim()]);
   if (settings.locality !== undefined)
     pairs.push(["cert.subject.locality", (settings.locality ?? "").trim()]);
+  if (settings.userSelfService !== undefined)
+    pairs.push(["cert.user_self_service", settings.userSelfService ? "true" : "false"]);
 
   await Promise.all(
     pairs.map(([key, value]) =>

@@ -7,8 +7,11 @@ import {
   ChevronUp,
   Copy,
   Download,
+  Eye,
+  EyeOff,
   Key,
   Loader2,
+  Lock,
   ShieldCheck,
   Trash2,
   Wifi,
@@ -35,6 +38,37 @@ function useCopyText() {
     setTimeout(() => setCopied(null), 2000);
   }, []);
   return { copied, copy };
+}
+
+/** Inline password reveal — shown in the cert list for active certs. */
+function PasswordReveal({ password }: { password: string }) {
+  const [visible, setVisible] = useState(false);
+  const { copied, copy } = useCopyText();
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <span className="text-[11px] text-stone-400 font-medium">P12 password:</span>
+      <code className="text-[11px] font-mono text-stone-700 bg-stone-100 rounded px-1.5 py-0.5 select-all">
+        {visible ? password : "••••••••••••"}
+      </code>
+      <button
+        onClick={() => setVisible((v) => !v)}
+        className="p-0.5 hover:bg-stone-200 rounded text-stone-400 hover:text-stone-700 transition-colors"
+        title={visible ? "Hide password" : "Show password"}
+      >
+        {visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      </button>
+      {visible && (
+        <button
+          onClick={() => copy(password, "pwd-" + password.slice(0, 4))}
+          className="p-0.5 hover:bg-stone-200 rounded text-stone-400 hover:text-stone-700 transition-colors"
+          title="Copy password"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function BundleDownloadPanel({
@@ -81,9 +115,9 @@ function BundleDownloadPanel({
             <Key className="w-5 h-5 text-amber-800" />
           </div>
           <div>
-            <h3 className="font-semibold text-amber-900">Certificate ready — save it now</h3>
+            <h3 className="font-semibold text-amber-900">Certificate ready — download your .p12 now</h3>
             <p className="text-xs text-amber-800 mt-1 leading-relaxed max-w-lg">
-              The <strong>.p12 file and password will never be shown again</strong> — save them now. The public cert (.pem) can be re-downloaded any time from the list below.
+              Download the <strong>.p12 file</strong> — you cannot re-download it later (the private key is not stored on the server). The password is saved and always visible in your cert list below.
             </p>
           </div>
         </div>
@@ -123,7 +157,7 @@ function BundleDownloadPanel({
             {copied === "pwd" ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
           </button>
         </div>
-        <p className="text-[11px] text-amber-700">You'll need this password when importing the .p12 on your device.</p>
+        <p className="text-[11px] text-amber-700">You'll need this password when importing the .p12 on your device. It's also visible any time in your cert list below.</p>
       </div>
 
       <div className="text-xs text-stone-900 font-semibold">
@@ -238,6 +272,7 @@ function InstallGuide() {
 export function LiveWifiCertView() {
   const { token } = useAuth();
   const [certs, setCerts] = useState<UserClientCert[]>([]);
+  const [userSelfService, setUserSelfService] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<ProvisionUserCertResponse | null>(null);
@@ -248,7 +283,9 @@ export function LiveWifiCertView() {
   const loadCerts = useCallback(async () => {
     if (!token) return;
     try {
-      setCerts(await listMyCerts(token));
+      const res = await listMyCerts(token);
+      setCerts(res.certs);
+      setUserSelfService(res.userSelfService);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load certificates");
     } finally {
@@ -351,17 +388,24 @@ export function LiveWifiCertView() {
         </div>
 
         <div className="flex items-center gap-3 pt-2 flex-wrap">
-          <button
-            onClick={handleProvision}
-            disabled={provisioning}
-            className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 disabled:opacity-60 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
-          >
-            {provisioning ? (
-              <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
-            ) : (
-              <><Key className="w-4 h-4" />Generate My WiFi Certificate</>
-            )}
-          </button>
+          {userSelfService ? (
+            <button
+              onClick={handleProvision}
+              disabled={provisioning}
+              className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 disabled:opacity-60 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+            >
+              {provisioning ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
+              ) : (
+                <><Key className="w-4 h-4" />Generate My WiFi Certificate</>
+              )}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 bg-stone-100 text-stone-500 text-sm px-4 py-2.5 rounded-xl border border-stone-200">
+              <Lock className="w-4 h-4 flex-shrink-0" />
+              <span>Certificate generation is managed by your administrator. Certs issued for you appear in the list below.</span>
+            </div>
+          )}
           <button
             onClick={downloadCa}
             className="flex items-center gap-2 border border-stone-200 hover:bg-stone-50 text-stone-700 text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
@@ -369,9 +413,11 @@ export function LiveWifiCertView() {
             <Download className="w-4 h-4" />Download CA Certificate
           </button>
         </div>
-        <p className="text-[11px] text-stone-400">
-          You can generate multiple certificates — useful for different devices or to replace a lost one. The public cert is always re-downloadable from the list below. The private key (inside the .p12) is shown only once at creation — keep it safe.
-        </p>
+        {userSelfService && (
+          <p className="text-[11px] text-stone-400">
+            You can generate multiple certificates — useful for different devices or to replace a lost one. The public cert is always re-downloadable from the list below. The .p12 file must be saved at creation time — the private key is not stored on the server.
+          </p>
+        )}
       </div>
 
       {/* Certificate list */}
@@ -397,7 +443,9 @@ export function LiveWifiCertView() {
 
         {!loading && !error && certs.length === 0 && (
           <div className="text-center py-8 text-stone-400 text-sm">
-            No certificates yet. Generate one above to get started.
+            {userSelfService
+              ? "No certificates yet. Generate one above to get started."
+              : "No certificates have been issued for you yet. Contact your administrator."}
           </div>
         )}
 
@@ -408,13 +456,13 @@ export function LiveWifiCertView() {
               return (
                 <div
                   key={cert.id}
-                  className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
+                  className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${
                     isActive
                       ? "bg-stone-50 border-stone-200"
                       : "bg-stone-50/40 border-stone-100 opacity-60"
                   }`}
                 >
-                  <Key className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-indigo-600" : "text-stone-400"}`} />
+                  <Key className={`w-4 h-4 flex-shrink-0 mt-1 ${isActive ? "text-indigo-600" : "text-stone-400"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-stone-900 font-mono truncate">{cert.commonName}</div>
                     <div className="text-xs text-stone-500 mt-0.5 truncate font-mono">{cert.fingerprint}</div>
@@ -423,41 +471,46 @@ export function LiveWifiCertView() {
                       {cert.revokedAt && ` · Revoked ${new Date(cert.revokedAt).toLocaleDateString()}`}
                       {cert.notes && ` · ${cert.notes}`}
                     </div>
+                    {isActive && cert.pkcs12Password && (
+                      <PasswordReveal password={cert.pkcs12Password} />
+                    )}
                   </div>
-                  <CertStatusBadge cert={cert} />
-                  {cert.certPem && (
-                    <button
-                      onClick={() => {
-                        const blob = new Blob([cert.certPem!], { type: "application/x-pem-file" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `${cert.commonName}-cert.pem`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="p-2 hover:bg-indigo-50 rounded-lg text-stone-400 hover:text-indigo-600 transition-colors"
-                      title="Download certificate (.pem)"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                  )}
-                  {isActive && (
-                    <button
-                      onClick={() => handleRevoke(cert.id)}
-                      disabled={revoking === cert.id}
-                      className="p-2 hover:bg-rose-50 rounded-lg text-stone-400 hover:text-rose-600 transition-colors disabled:opacity-50"
-                      title="Revoke certificate"
-                    >
-                      {revoking === cert.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                    <CertStatusBadge cert={cert} />
+                    {cert.certPem && (
+                      <button
+                        onClick={() => {
+                          const blob = new Blob([cert.certPem!], { type: "application/x-pem-file" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${cert.commonName}-cert.pem`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="p-2 hover:bg-indigo-50 rounded-lg text-stone-400 hover:text-indigo-600 transition-colors"
+                        title="Download certificate (.pem)"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    )}
+                    {isActive && (
+                      <button
+                        onClick={() => handleRevoke(cert.id)}
+                        disabled={revoking === cert.id}
+                        className="p-2 hover:bg-rose-50 rounded-lg text-stone-400 hover:text-rose-600 transition-colors disabled:opacity-50"
+                        title="Revoke certificate"
+                      >
+                        {revoking === cert.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

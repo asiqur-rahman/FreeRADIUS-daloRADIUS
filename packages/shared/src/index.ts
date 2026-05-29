@@ -373,10 +373,17 @@ export interface UserClientCert {
   commonName: string;
   /** Public certificate PEM — stored for re-download. Private key is never stored. */
   certPem: string | null;
+  /** PKCS12 password — visible until the cert is revoked. Null for legacy certs issued before this field was added. */
+  pkcs12Password: string | null;
   expiresAt: string;
   revokedAt: string | null;
   notes: string | null;
   createdAt: string;
+}
+
+export interface MyCertsResponse {
+  certs:           UserClientCert[];
+  userSelfService: boolean;
 }
 
 export interface ProvisionUserCertRequest {
@@ -421,6 +428,8 @@ export interface CertSubjectSettings {
   state:              string | null;
   /** L= field — city or locality. */
   locality:           string | null;
+  /** When true (default), users can generate their own WiFi certs from the portal. */
+  userSelfService:    boolean;
 }
 
 /** Result of a FreeRADIUS reload/restart command. */
@@ -460,4 +469,5 @@ export interface UpdateCertSettingsRequest {
   country?:            string | null;
   state?:              string | null;
   locality?:           string | null;
+  userSelfService?:    boolean;
 }

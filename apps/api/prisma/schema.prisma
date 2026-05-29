@@ -337,15 +337,18 @@ model PlatformSetting {
 //   a cert whose fingerprint matches — auto-registering the device.
 
 model UserClientCert {
-  id          String    @id @default(cuid())
-  userId      String
-  fingerprint String    @unique @db.VarChar(64)
-  commonName  String    @db.VarChar(255)
-  certPem     String?   @db.Text
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  notes       String?   @db.VarChar(500)
-  createdAt   DateTime  @default(now())
+  id             String    @id @default(cuid())
+  userId         String
+  fingerprint    String    @unique @db.VarChar(64)
+  commonName     String    @db.VarChar(255)
+  certPem        String?   @db.Text
+  /// AES-256-GCM encrypted PKCS12 password (key = MFA_ENCRYPTION_KEY).
+  /// Decrypted server-side before returning to the client.
+  pkcs12Password String?   @db.VarChar(512)
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  notes          String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
