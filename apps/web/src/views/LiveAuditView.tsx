@@ -27,10 +27,10 @@ export function LiveAuditView() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold text-white">Audit & Authentication</h2>
+            <h2 className="theme-text-primary text-xl font-semibold">Audit & Authentication</h2>
             <PageHelp title="Audit Log" description="Immutable record of every admin action: user creation, password resets, group policy changes, session disconnects, NAS modifications, and login events. Each entry records who performed the action, what changed, the source IP, and the timestamp." tips={["Audit records cannot be deleted or modified through the UI", "RADIUS authentication events (accept/reject per user) are stored separately in radpostauth", "Use the search and date filters to trace specific incidents or compliance requirements"]} />
           </div>
-          <p className="text-sm text-zinc-500 mt-0.5">Administrative changes and RADIUS/web access outcomes</p>
+          <p className="theme-text-muted mt-0.5 text-sm">Administrative changes and RADIUS/web access outcomes</p>
         </div>
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-1 flex">
           <button onClick={() => setTab("audit")} className={`px-3 py-2 text-xs rounded-md ${tab === "audit" ? "bg-indigo-600 text-white" : "text-zinc-400"}`}>Audit log</button>

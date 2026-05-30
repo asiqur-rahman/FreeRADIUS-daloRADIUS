@@ -97,6 +97,9 @@ export function listGroups(token: string) {
 export function createGroup(token: string, body: CreateGroupRequest) {
   return api<GroupSummary>(`${v1}/admin/groups`, { method: "POST", token, body });
 }
+export function deleteGroup(token: string, id: string) {
+  return api<{ ok: true }>(`${v1}/admin/groups/${id}`, { method: "DELETE", token });
+}
 export function createGroupAttribute(token: string, id: string, body: CreateGroupAttributeRequest) {
   return api<GroupSummary["attributes"][number]>(`${v1}/admin/groups/${id}/attributes`, { method: "POST", token, body });
 }

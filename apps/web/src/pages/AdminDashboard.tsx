@@ -15,7 +15,6 @@ import {
   Smartphone,
   Sparkles,
   UsersRound,
-  Wifi,
   X,
 } from "lucide-react";
 import { listAdminDevices } from "../api/endpoints";
@@ -155,15 +154,6 @@ function viewComponent(view: AdminView) {
   }
 }
 
-function initialsFor(name: string) {
-  return name
-    .split(/\s+/)
-    .map((segment) => segment[0] ?? "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 function toneClass(active: boolean, isWhiteTheme: boolean) {
   if (active) return "bg-sky-400/[0.16] text-white ring-1 ring-sky-300/20";
   return isWhiteTheme
@@ -218,7 +208,6 @@ export default function AdminDashboard() {
   });
 
   const operatorName = user?.fullName || user?.username || "Admin Operator";
-  const operatorInitials = initialsFor(operatorName);
   const isMoreActive = !mobilePrimaryItems.some((item) => item.id === view);
   const ActiveIcon = activeItem.icon;
 
@@ -275,7 +264,7 @@ export default function AdminDashboard() {
             </div>
 
             <div className={`mt-5 rounded-[26px] border p-4 ${softCardClass}`}>
-              <div className="flex items-center justify-between gap-3">
+              <div>
                 <div>
                   <div className={`text-[11px] uppercase tracking-[0.28em] ${faintClass}`}>
                     Operator
@@ -285,9 +274,6 @@ export default function AdminDashboard() {
                     <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
                     {user?.mfaEnabled ? "MFA on" : "Signed in"}
                   </div>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-sm font-semibold text-slate-950">
-                  {operatorInitials}
                 </div>
               </div>
             </div>
@@ -393,9 +379,6 @@ export default function AdminDashboard() {
                   onClick={() => setMobileMenuOpen(true)}
                   className={`flex h-10 items-center gap-2 rounded-2xl border px-3 transition ${ghostButtonClass}`}
                 >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-xs font-semibold text-slate-950">
-                    {operatorInitials}
-                  </div>
                   <span className="text-sm font-medium">More</span>
                 </button>
               </div>

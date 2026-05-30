@@ -127,7 +127,7 @@ export function LiveOperationsOverview() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-semibold tracking-tight text-white lg:text-2xl">
+            <h2 className="theme-text-primary text-xl font-semibold tracking-tight lg:text-2xl">
               Operations overview
             </h2>
             <PageHelp
@@ -140,7 +140,7 @@ export function LiveOperationsOverview() {
               ]}
             />
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-slate-500">
+          <p className="theme-text-muted mt-1 max-w-3xl text-sm">
             Live authentication telemetry, alert context, and RADIUS service posture in one
             operator-friendly view.
           </p>
@@ -148,7 +148,7 @@ export function LiveOperationsOverview() {
 
         <button
           onClick={load}
-          className="inline-flex items-center justify-center gap-2 rounded-[20px] border border-white/8 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08] hover:text-white"
+          className="theme-ghost-button inline-flex items-center justify-center gap-2 rounded-[20px] px-4 py-3 text-sm font-medium"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Refresh

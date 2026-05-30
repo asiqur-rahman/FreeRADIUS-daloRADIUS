@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import type { CreateGroupAttributeRequest, GroupAttribute, GroupSummary } from "@app/shared";
 import type { GroupPolicy } from "../api/endpoints";
 import {
-  createGroup, createGroupAttribute, deleteGroupAttribute,
+  createGroup, createGroupAttribute, deleteGroup, deleteGroupAttribute,
   listGroups, updateGroupPolicy,
 } from "../api/endpoints";
 import { ApiCallError } from "../api/client";
@@ -213,12 +213,13 @@ function fmtSeconds(sec: number | null): string {
 
 export function LiveGroupsView() {
   const { token } = useAuth();
-  const [groups,  setGroups]  = useState<GroupSummary[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form,    setForm]    = useState({ name: "", description: "" });
-  const [error,   setError]   = useState<string | null>(null);
-  const [notice,  setNotice]  = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [groups,        setGroups]        = useState<GroupSummary[]>([]);
+  const [showAdd,       setShowAdd]       = useState(false);
+  const [form,          setForm]          = useState({ name: "", description: "" });
+  const [createPreset,  setCreatePreset]  = useState<string>("none");
+  const [error,         setError]         = useState<string | null>(null);
+  const [notice,        setNotice]        = useState<string | null>(null);
+  const [busyKey,       setBusyKey]       = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -232,9 +233,17 @@ export function LiveGroupsView() {
     if (!token) return;
     setBusyKey("create-group"); setError(null);
     try {
-      await createGroup(token, form);
-      setForm({ name: "", description: "" }); setShowAdd(false);
-      setNotice("Group created."); await load();
+      const created = await createGroup(token, form);
+      // Apply preset immediately if one was selected
+      const preset = PRESETS.find((p) => p.label === createPreset);
+      if (preset) {
+        await updateGroupPolicy(token, created.id, preset.policy);
+      }
+      setForm({ name: "", description: "" });
+      setCreatePreset("none");
+      setShowAdd(false);
+      setNotice(preset ? `Group created with "${preset.label}" policy.` : "Group created.");
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create group");
     } finally { setBusyKey(null); }
@@ -262,6 +271,17 @@ export function LiveGroupsView() {
     } finally { setBusyKey(null); }
   };
 
+  const removeGroup = async (groupId: string) => {
+    if (!token) return;
+    setBusyKey(`del-group:${groupId}`); setError(null);
+    try {
+      await deleteGroup(token, groupId);
+      setNotice("Group deleted."); await load();
+    } catch (err) {
+      setError(err instanceof ApiCallError ? err.payload.message : "Unable to delete group");
+    } finally { setBusyKey(null); }
+  };
+
   const savePolicy = async (groupId: string, policy: GroupPolicy) => {
     if (!token) return;
     setBusyKey(`policy:${groupId}`); setError(null);
@@ -279,7 +299,7 @@ export function LiveGroupsView() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold text-white">Groups & Policy</h2>
+            <h2 className="theme-text-primary text-xl font-semibold">Groups & Policy</h2>
             <PageHelp title="Groups & Policy"
               description="Policy groups define RADIUS reply attributes returned after successful auth. Use the Network Policy card for VLAN, bandwidth, and session presets, or the advanced editor for any RADIUS attribute."
               tips={[
@@ -291,7 +311,7 @@ export function LiveGroupsView() {
               ]}
             />
           </div>
-          <p className="mt-0.5 text-sm text-zinc-500">RADIUS reply attributes applied to approved devices on authentication.</p>
+          <p className="theme-text-muted mt-0.5 text-sm">RADIUS reply attributes applied to approved devices on authentication.</p>
         </div>
         <button onClick={() => setShowAdd((v) => !v)}
           className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-500">
@@ -303,19 +323,71 @@ export function LiveGroupsView() {
       {notice && <div className="rounded-lg border border-emerald-900 bg-emerald-950/20 p-3 text-sm text-emerald-300">{notice}</div>}
 
       {showAdd && (
-        <form onSubmit={submit} className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 sm:flex-row">
-          <input required value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Group name"
-            className="flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white" />
-          <input value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Description (optional)"
-            className="flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white" />
-          <button disabled={busyKey === "create-group"}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white disabled:opacity-60">
-            {busyKey === "create-group" ? "Creating…" : "Create"}
-          </button>
+        <form onSubmit={submit} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3">
+          {/* Name + description row */}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input required value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Group name (e.g. Staff, Guest, IoT)"
+              className="flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-indigo-500/40 focus:outline-none" />
+            <input value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Description (optional)"
+              className="flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-indigo-500/40 focus:outline-none" />
+          </div>
+
+          {/* Preset picker */}
+          <div>
+            <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">Start with a policy preset</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {/* None option */}
+              <button type="button" onClick={() => setCreatePreset("none")}
+                className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition ${
+                  createPreset === "none"
+                    ? "border-zinc-400/40 bg-zinc-700 text-zinc-100"
+                    : "border-zinc-700 bg-zinc-800/60 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                }`}>
+                <span className="text-base leading-none">∅</span>
+                <span>No preset</span>
+              </button>
+              {PRESETS.map((p) => {
+                const Icon = p.icon;
+                const selected = createPreset === p.label;
+                return (
+                  <button key={p.label} type="button"
+                    onClick={() => setCreatePreset(p.label)}
+                    title={p.description}
+                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition ${
+                      selected ? p.color + " ring-1 ring-white/20" : "border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}>
+                    <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="truncate">{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {createPreset !== "none" && (() => {
+              const p = PRESETS.find((pr) => pr.label === createPreset);
+              if (!p) return null;
+              return (
+                <p className="mt-1.5 text-[10px] text-zinc-500">
+                  {p.description}
+                  {p.policy.vlanId ? ` · VLAN ${p.policy.vlanId}` : ""}
+                  {p.policy.downloadMbps ? ` · ↓${p.policy.downloadMbps} Mbps` : ""}
+                  {p.policy.uploadMbps ? ` ↑${p.policy.uploadMbps} Mbps` : ""}
+                  {p.policy.sessionTimeoutSec ? ` · Session ${fmtSeconds(p.policy.sessionTimeoutSec)}` : ""}
+                  {p.policy.idleTimeoutSec ? ` · Idle ${fmtSeconds(p.policy.idleTimeoutSec)}` : ""}
+                </p>
+              );
+            })()}
+          </div>
+
+          <div className="flex justify-end">
+            <button disabled={busyKey === "create-group"}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60">
+              {busyKey === "create-group" ? <><Loader2 className="h-4 w-4 animate-spin" />Creating…</> : "Create group"}
+            </button>
+          </div>
         </form>
       )}
 
@@ -324,7 +396,8 @@ export function LiveGroupsView() {
           <GroupCard key={group.id} group={group} busyKey={busyKey}
             onAddAttribute={addAttribute}
             onDeleteAttribute={removeAttribute}
-            onSavePolicy={savePolicy} />
+            onSavePolicy={savePolicy}
+            onDeleteGroup={removeGroup} />
         ))}
         {groups.length === 0 && (
           <div className="col-span-full rounded-xl border border-dashed border-zinc-800 px-4 py-10 text-center text-sm text-zinc-500">
@@ -338,16 +411,18 @@ export function LiveGroupsView() {
 
 // ── Group Card ────────────────────────────────────────────────────────────────
 
-function GroupCard({ group, busyKey, onAddAttribute, onDeleteAttribute, onSavePolicy }: {
+function GroupCard({ group, busyKey, onAddAttribute, onDeleteAttribute, onSavePolicy, onDeleteGroup }: {
   group: GroupSummary;
   busyKey: string | null;
-  onAddAttribute:  (id: string, body: CreateGroupAttributeRequest) => Promise<void>;
+  onAddAttribute:    (id: string, body: CreateGroupAttributeRequest) => Promise<void>;
   onDeleteAttribute: (id: string, attr: GroupAttribute) => Promise<void>;
-  onSavePolicy: (id: string, policy: GroupPolicy) => Promise<void>;
+  onSavePolicy:      (id: string, policy: GroupPolicy) => Promise<void>;
+  onDeleteGroup:     (id: string) => Promise<void>;
 }) {
-  const [attrForm,     setAttrForm]     = useState<CreateGroupAttributeRequest>(DEFAULT_FORM);
-  const [selectedAttr, setSelectedAttr] = useState<string>("__custom__");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [attrForm,      setAttrForm]      = useState<CreateGroupAttributeRequest>(DEFAULT_FORM);
+  const [selectedAttr,  setSelectedAttr]  = useState<string>("__custom__");
+  const [showAdvanced,  setShowAdvanced]  = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Network policy local state — synced from group prop
   const [policy, setPolicy] = useState<GroupPolicy>(() => parseGroupPolicy(group));
@@ -421,11 +496,37 @@ function GroupCard({ group, busyKey, onAddAttribute, onDeleteAttribute, onSavePo
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/15 flex-shrink-0">
           <Layers className="h-5 w-5 text-indigo-300" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-white truncate">{group.name}</h3>
           <p className="text-xs text-zinc-500">{group._count?.members ?? 0} members · {replyAttrs} reply attrs</p>
         </div>
+        {/* Delete — two-step confirm */}
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)}
+            title="Delete group"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-zinc-600 hover:bg-rose-500/10 hover:text-rose-400 transition">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        ) : (
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            <button
+              onClick={() => { void onDeleteGroup(group.id); }}
+              disabled={busyKey === `del-group:${group.id}`}
+              className="rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-500 disabled:opacity-60">
+              {busyKey === `del-group:${group.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Delete"}
+            </button>
+            <button onClick={() => setConfirmDelete(false)}
+              className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:bg-zinc-800">
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
+      {confirmDelete && (
+        <p className="text-xs text-rose-400 -mt-2">
+          This removes the group and all its RADIUS attributes. Members keep their accounts.
+        </p>
+      )}
 
       {group.description && <p className="text-xs text-zinc-400 -mt-2">{group.description}</p>}
 

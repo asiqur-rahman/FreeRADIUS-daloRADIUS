@@ -1483,10 +1483,10 @@ export function LiveSettingsView() {
     <div className="space-y-5 max-w-4xl">
       <div>
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold text-white">Settings</h2>
+          <h2 className="theme-text-primary text-xl font-semibold">Settings</h2>
           <PageHelp title="Platform Settings" description="Platform-wide configuration controls. Changes here affect authentication security policy, RADIUS hook authentication, CoA behavior when policies change, and notification integrations." tips={["RADIUS Hook Secret must match the X-Radius-Hook-Secret header configured in FreeRADIUS rlm_rest — mismatches will break all RADIUS policy callbacks", "IP Guard restricts /radius/* endpoints to a registered allowlist of FreeRADIUS server IPs — enable in production", "Telegram bot token and admin chat ID enable real-time device approval request notifications"]} />
         </div>
-        <p className="mt-0.5 text-sm text-zinc-500">
+        <p className="theme-text-muted mt-0.5 text-sm">
           Certificate inventory, security posture, and RADIUS hook controls.
         </p>
       </div>

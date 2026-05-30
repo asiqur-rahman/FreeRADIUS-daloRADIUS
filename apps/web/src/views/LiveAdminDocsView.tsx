@@ -132,9 +132,9 @@ export function LiveAdminDocsView() {
       <div>
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-indigo-400" />
-          <h2 className="text-xl font-semibold text-white">Documentation</h2>
+          <h2 className="theme-text-primary text-xl font-semibold">Documentation</h2>
         </div>
-        <p className="mt-0.5 text-sm text-zinc-500">
+        <p className="theme-text-muted mt-0.5 text-sm">
           Architecture reference, configuration guides, and troubleshooting for operators and administrators.
         </p>
       </div>
