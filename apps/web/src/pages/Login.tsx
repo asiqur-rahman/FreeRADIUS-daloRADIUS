@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+﻿import { type FormEvent, useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck, User } from "lucide-react";
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -63,7 +63,7 @@ export function Login() {
                   </div>
                   <div>
                     <div className="theme-text-faint text-[11px] uppercase tracking-[0.3em]">
-                      RadiusOps
+                      Nexara
                     </div>
                     <div className={`mt-1 text-base font-semibold tracking-tight ${titleClass}`}>
                       Enterprise Wi-Fi Access Control
@@ -112,7 +112,7 @@ export function Login() {
                 </div>
                 <div>
                   <div className="theme-text-faint text-[11px] uppercase tracking-[0.3em]">
-                    RadiusOps
+                    Nexara
                   </div>
                   <div className={`mt-1 text-base font-semibold tracking-tight ${titleClass}`}>
                     Enterprise Wi-Fi Access

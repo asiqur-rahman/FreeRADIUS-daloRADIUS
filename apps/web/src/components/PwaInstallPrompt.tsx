@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { Download, Plus, Share2, Smartphone, Sparkles, X, Zap } from "lucide-react";
 import { usePwaInstall } from "../pwa/PwaInstallContext";
 import { useTheme } from "../theme/ThemeContext";
@@ -10,10 +10,10 @@ export function PwaInstallPrompt() {
   const body = useMemo(() => {
     if (mode === "ios") {
       return {
-        eyebrow: "Install RadiusOps",
+        eyebrow: "Install Nexara",
         title: "Do you want to install this app?",
         description:
-          "Add RadiusOps to your home screen for faster launch and a cleaner app-like view.",
+          "Add Nexara to your home screen for faster launch and a cleaner app-like view.",
         ctaLabel: "Show steps",
         benefits: [
           { icon: Smartphone, label: "Home screen" },
@@ -25,10 +25,10 @@ export function PwaInstallPrompt() {
 
     if (mode === "manual") {
       return {
-        eyebrow: "Install RadiusOps",
+        eyebrow: "Install Nexara",
         title: "Do you want to install this app?",
         description:
-          "Your browser can still install RadiusOps from its menu, even when the system prompt is not shown automatically.",
+          "Your browser can still install Nexara from its menu, even when the system prompt is not shown automatically.",
         ctaLabel: "Show steps",
         benefits: [
           { icon: Smartphone, label: "App feel" },
@@ -39,10 +39,10 @@ export function PwaInstallPrompt() {
     }
 
     return {
-      eyebrow: "Install RadiusOps",
+      eyebrow: "Install Nexara",
       title: "Do you want to install this app?",
       description:
-        "Install RadiusOps for faster launch, less browser clutter, and a cleaner full-screen workspace.",
+        "Install Nexara for faster launch, less browser clutter, and a cleaner full-screen workspace.",
       ctaLabel: busy ? "Preparing..." : "Install now",
       benefits: [
         { icon: Smartphone, label: "App feel" },
@@ -79,7 +79,7 @@ export function PwaInstallPrompt() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Install RadiusOps"
+          aria-label="Install Nexara"
           className={`${isWhiteTheme ? "theme-surface-strong" : "surface-dark-strong"} card-rise relative overflow-hidden rounded-[30px]`}
         >
           <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-sky-400/18 via-cyan-300/10 to-teal-400/18 blur-2xl" />
@@ -171,7 +171,7 @@ export function PwaInstallPrompt() {
             <div className={`mt-4 rounded-[20px] border px-4 py-3 text-sm ${isWhiteTheme ? "border-slate-200 bg-slate-50/90 text-slate-600" : "border-white/6 bg-white/[0.03] text-slate-400"}`}>
               {mode === "native"
                 ? "You can keep using the browser too. Installing only makes access faster and cleaner."
-                : "You can skip this for now and keep using RadiusOps in your browser at any time."}
+                : "You can skip this for now and keep using Nexara in your browser at any time."}
             </div>
 
             <div className="mt-4 flex items-center gap-2">

@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────
+﻿// ─────────────────────────────────────────────────────────────────────
 //  Admin Documentation — architecture, authentication methods,
 //  FreeRADIUS config snippets, and troubleshooting.
 // ─────────────────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ export function LiveAdminDocsView() {
       {/* ── Architecture Overview ─────────────────────────────────── */}
       <Section icon={Network} title="Architecture Overview" subtitle="How 802.1X / RADIUS authentication flows" color="text-indigo-400" defaultOpen>
         <p>
-          RadiusOps is a management plane layered on top of FreeRADIUS. It does <strong className="text-white">not</strong> replace
+          Nexara is a management plane layered on top of FreeRADIUS. It does <strong className="text-white">not</strong> replace
           FreeRADIUS — it configures it. The data flow for every Wi-Fi authentication is:
         </p>
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-4 py-4 font-mono text-xs text-zinc-300 leading-7">
@@ -153,14 +153,14 @@ export function LiveAdminDocsView() {
           <ChevronRight className="inline h-3 w-3 mx-1 text-zinc-600" />
           <span className="text-violet-400">FreeRADIUS</span>
           <ChevronRight className="inline h-3 w-3 mx-1 text-zinc-600" />
-          <span className="text-amber-400">RadiusOps API (rlm_rest)</span>
+          <span className="text-amber-400">Nexara API (rlm_rest)</span>
           <ChevronRight className="inline h-3 w-3 mx-1 text-zinc-600" />
           <span className="text-violet-400">FreeRADIUS</span>
           <ChevronRight className="inline h-3 w-3 mx-1 text-zinc-600" />
           <span className="text-emerald-400">Access Point</span>
         </div>
 
-        <h4 className="font-semibold text-zinc-100 mt-2">What RadiusOps manages</h4>
+        <h4 className="font-semibold text-zinc-100 mt-2">What Nexara manages</h4>
         <ul className="space-y-1.5 list-none pl-0">
           {[
             ["Users & credentials", "NT-Hash for PEAP-MSCHAPv2 stored in DB, synced to radcheck via rlm_rest"],
@@ -239,7 +239,7 @@ export function LiveAdminDocsView() {
       {/* ── FreeRADIUS Configuration ──────────────────────────────── */}
       <Section icon={Server} title="FreeRADIUS Configuration" subtitle="rlm_rest integration snippets" color="text-amber-400">
         <p>
-          FreeRADIUS delegates authorization and post-auth to RadiusOps via <code className="bg-zinc-800 px-1 rounded text-zinc-200">rlm_rest</code>.
+          FreeRADIUS delegates authorization and post-auth to Nexara via <code className="bg-zinc-800 px-1 rounded text-zinc-200">rlm_rest</code>.
           Below are the minimal configuration snippets. Adjust paths and values for your deployment.
         </p>
 
@@ -368,7 +368,7 @@ RADIUS_IP_GUARD_ENABLED=true    # set false in dev, true in prod
             <p className="text-xs text-zinc-400 leading-relaxed">
               This is the TLS certificate FreeRADIUS presents to clients during the EAP handshake —
               configured in <code className="bg-zinc-800 px-1 rounded">eap.conf → certificate_file</code>.
-              RadiusOps does <em>not</em> manage this cert on disk; it only tracks its metadata.
+              Nexara does <em>not</em> manage this cert on disk; it only tracks its metadata.
               Upload the public PEM in <strong className="text-zinc-300">Settings → EAP Server Certificates</strong> to get expiry alerts and the Windows thumbprint.
             </p>
           </div>
@@ -498,27 +498,27 @@ openssl rand -hex 32`} />
             </thead>
             <tbody className="divide-y divide-zinc-800/60 text-xs">
               {[
-                ["users", "RadiusOps", "Application users with role, status, validity dates, MFA"],
-                ["user_secrets", "RadiusOps", "NT-Hash + Argon2id hash — separate sensitivity table"],
-                ["user_devices", "RadiusOps", "MAC registry with approval status and EAP-TLS fingerprint"],
-                ["user_client_certs", "RadiusOps", "EAP-TLS client cert metadata; CA-issued, one per user"],
-                ["groups", "RadiusOps", "Policy groups with RADIUS attributes"],
-                ["group_attributes", "RadiusOps", "Per-group RADIUS check / reply attributes"],
-                ["nas_clients", "RadiusOps", "Access point shared secrets"],
-                ["sites", "RadiusOps", "Physical locations grouping NAS clients"],
-                ["eap_certificates", "RadiusOps", "EAP server cert inventory (metadata + expiry tracking)"],
-                ["platform_settings", "RadiusOps", "Key-value runtime config (Telegram, CA PEM)"],
-                ["audit_logs", "RadiusOps", "Immutable admin action log"],
+                ["users", "Nexara", "Application users with role, status, validity dates, MFA"],
+                ["user_secrets", "Nexara", "NT-Hash + Argon2id hash — separate sensitivity table"],
+                ["user_devices", "Nexara", "MAC registry with approval status and EAP-TLS fingerprint"],
+                ["user_client_certs", "Nexara", "EAP-TLS client cert metadata; CA-issued, one per user"],
+                ["groups", "Nexara", "Policy groups with RADIUS attributes"],
+                ["group_attributes", "Nexara", "Per-group RADIUS check / reply attributes"],
+                ["nas_clients", "Nexara", "Access point shared secrets"],
+                ["sites", "Nexara", "Physical locations grouping NAS clients"],
+                ["eap_certificates", "Nexara", "EAP server cert inventory (metadata + expiry tracking)"],
+                ["platform_settings", "Nexara", "Key-value runtime config (Telegram, CA PEM)"],
+                ["audit_logs", "Nexara", "Immutable admin action log"],
                 ["radcheck", "FreeRADIUS", "Derived — written by RadiusPolicyService only"],
                 ["radreply", "FreeRADIUS", "Derived — written by RadiusPolicyService only"],
                 ["radusergroup", "FreeRADIUS", "Derived — written by RadiusPolicyService only"],
                 ["nas", "FreeRADIUS", "Derived — mirrored from nas_clients by RadiusPolicyService"],
-                ["radacct", "FreeRADIUS", "RADIUS accounting records — read-only in RadiusOps"],
+                ["radacct", "FreeRADIUS", "RADIUS accounting records — read-only in Nexara"],
               ].map(([table, owner, purpose]) => (
                 <tr key={table} className="hover:bg-zinc-800/20 transition-colors">
                   <td className="px-4 py-2.5 font-mono text-zinc-200">{table}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${owner === "RadiusOps" ? "bg-indigo-500/15 text-indigo-300" : "bg-zinc-500/15 text-zinc-400"}`}>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${owner === "Nexara" ? "bg-indigo-500/15 text-indigo-300" : "bg-zinc-500/15 text-zinc-400"}`}>
                       {owner}
                     </span>
                   </td>

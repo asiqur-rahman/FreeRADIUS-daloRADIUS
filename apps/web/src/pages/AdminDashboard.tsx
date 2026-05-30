@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { listAdminDevices } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
-import { PwaInstallButton } from "../components/PwaInstallButton";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { playNotificationSound } from "../hooks/useNotificationSound";
 import { useSSE } from "../hooks/useSSE";
@@ -251,30 +250,11 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <div className={`text-[11px] uppercase tracking-[0.32em] ${faintClass}`}>
-                    RadiusOps
+                    Nexara
                   </div>
                   <h1 className={`mt-1 text-lg font-semibold tracking-tight ${titleClass}`}>
                     Control Center
                   </h1>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <PwaInstallButton compact />
-                <ThemeToggle compact />
-              </div>
-            </div>
-
-            <div className={`mt-5 rounded-[26px] border p-4 ${softCardClass}`}>
-              <div>
-                <div>
-                  <div className={`text-[11px] uppercase tracking-[0.28em] ${faintClass}`}>
-                    Operator
-                  </div>
-                  <div className={`mt-2 text-base font-semibold ${titleClass}`}>{operatorName}</div>
-                  <div className={`mt-1 flex items-center gap-2 text-xs ${copyClass}`}>
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-                    {user?.mfaEnabled ? "MFA on" : "Signed in"}
-                  </div>
                 </div>
               </div>
             </div>
@@ -354,7 +334,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="min-w-0">
                   <div className={`text-[11px] uppercase tracking-[0.28em] ${faintClass}`}>
-                    RadiusOps
+                    Nexara
                   </div>
                   <div className={`truncate text-[15px] font-semibold tracking-tight ${titleClass}`}>
                     {activeItem.label}
@@ -363,7 +343,6 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <PwaInstallButton compact />
                 <ThemeToggle compact />
                 <button
                   onClick={() => navigate("devices")}
@@ -394,20 +373,15 @@ export default function AdminDashboard() {
                   <span className={`rounded-full border px-2 py-1 text-[10px] tracking-[0.22em] ${isWhiteTheme ? "border-slate-200 bg-white/84 text-slate-600" : "border-white/10 text-slate-300"}`}>
                     Admin
                   </span>
-                  <span className="hidden sm:inline">Admin</span>
+                  <span className="hidden sm:inline">{user?.username ?? "Admin"}</span>
                 </div>
-                <div className="mt-3">
-                  <h2 className={`text-2xl font-semibold tracking-tight lg:text-[2rem] ${titleClass}`}>
-                    {activeItem.label}
-                  </h2>
-                  <p className={`mt-1 max-w-3xl text-sm text-balance ${copyClass}`}>
-                    {activeItem.description}
-                  </p>
+                <div className={`mt-1.5 flex items-center gap-2 text-sm ${copyClass}`}>
+                  <ShieldCheck className={`h-3.5 w-3.5 ${user?.mfaEnabled ? "text-emerald-400" : "text-slate-500"}`} />
+                  {user?.mfaEnabled ? "Signed in · MFA active" : "Signed in"}
                 </div>
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <PwaInstallButton />
                 <ThemeToggle />
                 <button
                   onClick={() => navigate("devices")}
@@ -500,16 +474,12 @@ export default function AdminDashboard() {
                   </div>
                   <div className={`mt-1 text-lg font-semibold ${titleClass}`}>{operatorName}</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <PwaInstallButton compact />
-                  <ThemeToggle compact />
-                  <button
+                <button
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex h-10 w-10 items-center justify-center rounded-2xl border transition ${ghostButtonClass}`}
                   >
                     <X className="h-4.5 w-4.5" />
                   </button>
-                </div>
               </div>
 
               <div className="mt-4 space-y-3">
