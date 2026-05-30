@@ -1,0 +1,374 @@
+// ─────────────────────────────────────────────────────────────────────
+//  Application schema for the RADIUS Management Platform.
+//
+//  Source of truth for everything: users, devices, groups, NAS, audit.
+//  The FreeRADIUS tables (radcheck/radreply/radgroup*/radusergroup/nas)
+//  are *derived* from these tables and written exclusively through the
+//  RadiusPolicyService.
+//
+//  Phase 3 reads FreeRADIUS-managed sessions from radacct while device
+//  bindings are application-owned through UserDevice below.
+// ─────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  user
+}
+
+enum UserStatus {
+  pending
+  active
+  suspended
+  expired
+}
+
+enum AuditAction {
+  user_create
+  user_update
+  user_delete
+  user_reset_password
+  user_disconnect
+  password_change
+  group_create
+  group_update
+  group_delete
+  nas_create
+  nas_update
+  nas_delete
+  nas_rotate_secret
+  site_create
+  site_update
+  site_delete
+  cert_add
+  cert_activate
+  cert_delete
+  login_success
+  login_failure
+  mfa_enable
+  mfa_disable
+  device_approve
+  device_reject
+  device_block
+  device_unblock
+  radius_ip_create
+  radius_ip_delete
+  radius_ip_update
+}
+
+enum AuthEventType {
+  login_ok
+  login_fail
+  radius_accept
+  radius_reject
+}
+
+enum DeviceStatus {
+  pending
+  approved
+  rejected
+  blocked   // permanently banned — never auto-registers again
+}
+
+enum DeviceType {
+  laptop
+  mobile
+  tablet
+  iot
+  printer
+  network
+  gaming
+  tv
+  unknown
+}
+
+// ── Users & credentials ───────────────────────────────────────────────
+//   Credentials live in UserSecret (separate row, separate sensitivity).
+
+model User {
+  id          String     @id @default(cuid())
+  username    String     @unique @db.VarChar(64)
+  email       String     @unique @db.VarChar(254)
+  fullName    String?    @db.VarChar(120)
+  role        UserRole   @default(user)
+  status      UserStatus @default(active)
+  validFrom   DateTime?
+  validUntil  DateTime?
+  mfaEnabled   Boolean    @default(false)
+  mfaSecret    String?    @db.VarChar(255)
+  certEnabled  Boolean    @default(true)  // can user generate/use WiFi certificates?
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  secret      UserSecret?
+  groups      UserGroup[]
+  devices     UserDevice[]
+  clientCerts UserClientCert[]
+  auditLogs   AuditLog[]   @relation("AuditActor")
+  events      AuthEvent[]
+  tokens      ApiToken[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model UserSecret {
+  userId               String   @id
+  passwordHashArgon2id String   @db.VarChar(255)
+  ntHash               String   @db.VarChar(32) // 16-byte MD4 hex
+  passwordChangedAt    DateTime @default(now())
+  mustChangePassword   Boolean  @default(false)
+  tokenVersion         Int      @default(0)
+  failedAttempts       Int      @default(0)
+  lockedUntil          DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_secrets")
+}
+
+// ── Devices (MAC + future EAP-TLS cert fingerprint) ─────────────────
+//   Read by FreeRADIUS at PEAP post-auth (see inner-tunnel snippet).
+
+model UserDevice {
+  id              String       @id @default(cuid())
+  userId          String
+  mac             String       @db.VarChar(17)  // canonical lowercase, colon-separated
+  label           String?      @db.VarChar(80)
+  isPrimary       Boolean      @default(false)
+  certFingerprint String?      @db.VarChar(64)
+  learnedAt       DateTime     @default(now())
+  verifiedAt      DateTime?
+  lastSeenAt      DateTime?
+  status          DeviceStatus @default(pending)
+  // ── NAC enrichment (populated from MAC OUI + RADIUS accounting) ───
+  manufacturer      String?    @db.VarChar(128)  // from MAC OUI lookup, e.g. "Apple Inc."
+  deviceType        DeviceType @default(unknown)  // classified from OUI manufacturer
+  lastIp            String?    @db.VarChar(45)   // last known IP from radacct
+  // ── Decision metadata (replaces the old DeviceApproval history table) ─
+  decidedAt         DateTime?
+  decidedBy         String?                       // admin user id
+  decisionNote      String?    @db.VarChar(500)
+  // ── Telegram sync (message IDs for bidirectional web/Telegram updates) ─
+  telegramChatId    BigInt?
+  telegramMessageId Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mac])
+  @@index([mac])
+  @@index([status])
+  @@map("user_devices")
+}
+
+// ── Groups & policy ──────────────────────────────────────────────────
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String   @unique @db.VarChar(64)
+  description String?  @db.VarChar(255)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members    UserGroup[]
+  attributes GroupAttribute[]
+
+  @@map("groups")
+}
+
+model GroupAttribute {
+  id        String @id @default(cuid())
+  groupId   String
+  attribute String @db.VarChar(64)
+  op        String @db.VarChar(2)     // ':=' for assignment, '==' for compare
+  value     String @db.VarChar(253)
+  kind      String @db.VarChar(8)     // 'check' or 'reply' → radgroupcheck/radgroupreply
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, attribute, kind])
+  @@map("group_attributes")
+}
+
+model UserGroup {
+  userId   String
+  groupId  String
+  priority Int    @default(0)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, groupId])
+  @@map("user_groups")
+}
+
+// ── NAS clients (mirrored into the freeradius `nas` table) ──────────
+
+model NasClient {
+  id          String   @id @default(cuid())
+  nasname     String   @unique @db.VarChar(128) // IP or CIDR
+  shortname   String   @db.VarChar(32)
+  secret      String   @db.VarChar(60)
+  type        String   @default("other") @db.VarChar(30)
+  description String?  @db.VarChar(200)
+  enabled     Boolean  @default(true)
+  coaPort     Int      @default(3799)
+  siteId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  site Site? @relation(fields: [siteId], references: [id])
+
+  @@map("nas_clients")
+}
+
+model Site {
+  id      String  @id @default(cuid())
+  name    String  @unique @db.VarChar(64)
+  region  String? @db.VarChar(64)
+  address String? @db.VarChar(255)
+
+  nasClients NasClient[]
+
+  @@map("sites")
+}
+
+// ── Audit & auth events ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String?
+  action     AuditAction
+  targetType String      @db.VarChar(32)
+  targetId   String?     @db.VarChar(64)
+  metadata   Json?
+  ip         String?     @db.VarChar(45)
+  userAgent  String?     @db.VarChar(255)
+  createdAt  DateTime    @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+model AuthEvent {
+  id        String        @id @default(cuid())
+  userId    String?
+  username  String        @db.VarChar(64) // denormalised — RADIUS events arrive by name
+  type      AuthEventType
+  source    String        @db.VarChar(32) // 'web' | 'radius' | 'api'
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([username, createdAt])
+  @@map("auth_events")
+}
+
+// ── EAP server certificate inventory ────────────────────────────────
+//   The architecture doc calls this a silent killer: when the EAP
+//   server certificate expires, every 802.1X user is rejected. The
+//   platform records every cert seen, alerts at 60/30/7 days, and
+//   exposes the active cert in the admin UI.
+
+model EapCertificate {
+  id              String    @id @default(cuid())
+  subject         String    @db.VarChar(255)
+  issuer          String?   @db.VarChar(255)
+  fingerprint     String    @unique @db.VarChar(64)  // sha256 lowercase hex
+  fingerprintSha1 String?   @db.VarChar(40)          // sha1 hex — for Windows WPA2-Enterprise thumbprint
+  serial          String?   @db.VarChar(80)
+  issuedAt    DateTime
+  expiresAt   DateTime
+  isActive    Boolean   @default(false)
+  notes       String?   @db.VarChar(255)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([expiresAt])
+  @@map("eap_certificates")
+}
+
+// ── RADIUS hook IP allowlist ─────────────────────────────────────────
+//   When RADIUS_IP_GUARD_ENABLED=true the /radius/* preHandler checks
+//   the source IP against this table.  Empty table = allow all.
+//   Managed from the admin Settings view.
+
+model RadiusAllowedIp {
+  id        String   @id @default(cuid())
+  cidr      String   @unique @db.VarChar(50) // "192.168.1.1" or "10.0.0.0/24"
+  label     String?  @db.VarChar(80)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("radius_allowed_ips")
+}
+
+// ── Platform settings (DB-backed admin configuration) ───────────────
+//   Key-value store for runtime-configurable settings.
+//   Keys use dot notation: "telegram.bot_token", "telegram.admin_chat_id".
+//   Sensitive values are stored as-is (secrets management is out of scope);
+//   the API masks them on read.
+
+model PlatformSetting {
+  key       String   @id @db.VarChar(128)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+// ── User-level client certificates (EAP-TLS passwordless WiFi) ──────
+//   When a cert is provisioned from the admin panel, its fingerprint is
+//   stored here.  The EAP-TLS authorize hook accepts any MAC that presents
+//   a cert whose fingerprint matches — auto-registering the device.
+
+model UserClientCert {
+  id             String    @id @default(cuid())
+  userId         String
+  fingerprint    String    @unique @db.VarChar(64)
+  commonName     String    @db.VarChar(255)
+  certPem        String?   @db.Text
+  /// AES-256-GCM encrypted PKCS12 password (key = MFA_ENCRYPTION_KEY).
+  /// Decrypted server-side before returning to the client.
+  pkcs12Password String?   @db.VarChar(512)
+  expiresAt      DateTime
+  notes          String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_client_certs")
+}
+
+// ── M2M tokens (Phase 1: scaffold only, not yet exposed) ────────────
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String    @db.VarChar(80)
+  hash       String    @unique @db.VarChar(128)
+  scopes     String[]
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("api_tokens")
+}

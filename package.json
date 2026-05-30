@@ -1,0 +1,53 @@
+{
+  "name": "nexara",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nexara — The Intelligent Nexus of Enterprise Wi-Fi Access Control. Self-hosted 802.1X platform: PEAP, EAP-TLS, NAC, VLAN policy, device approval, certificate management, real-time monitoring.",
+  "author": {
+    "name": "Md. Asiqur Rahman Khan",
+    "url": "https://github.com/asiqur-rahman"
+  },
+  "maintainers": [
+    {
+      "name": "Md. Asiqur Rahman Khan",
+      "url": "https://github.com/asiqur-rahman"
+    }
+  ],
+  "homepage": "https://github.com/asiqur-rahman/radiusops",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asiqur-rahman/radiusops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/asiqur-rahman/radiusops/issues"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:migrate": "pnpm --filter @app/api run prisma:migrate",
+    "db:status": "pnpm --filter @app/api run prisma:status",
+    "db:deploy": "pnpm --filter @app/api run prisma:deploy",
+    "db:generate": "pnpm --filter @app/api run prisma:generate",
+    "db:seed": "docker exec radius-api node --openssl-legacy-provider prisma/seed.mjs",
+    "lab:check": "node ops/check-lab-readiness.mjs",
+    "lab:config": "node ops/print-lab-config.mjs",
+    "lab:device-ca": "node ops/generate-dev-device-ca.mjs",
+    "lab:client-cert": "node ops/generate-test-client-cert.mjs",
+    "certs:generate": "node ops/generate-certs.mjs",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:build": "docker compose build",
+    "docker:logs": "docker compose logs -f"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

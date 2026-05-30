@@ -1,0 +1,50 @@
+{
+  "name": "@app/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=../../.env ./node_modules/tsx/dist/cli.mjs watch src/index.ts",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "node ./node_modules/eslint/bin/eslint.js \"src/**/*.ts\"",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "prisma:generate": "node --env-file=../../.env ./node_modules/prisma/build/index.js generate",
+    "prisma:migrate": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate dev",
+    "prisma:status": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate status",
+    "prisma:deploy": "node --env-file=../../.env ./node_modules/prisma/build/index.js migrate deploy",
+    "prisma:studio": "node --env-file=../../.env ./node_modules/prisma/build/index.js studio",
+    "seed": "node --env-file=../../.env --openssl-legacy-provider ./node_modules/tsx/dist/cli.mjs prisma/seed.ts"
+  },
+  "dependencies": {
+    "@app/shared": "workspace:*",
+    "@fastify/cookie": "^10.0.1",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/helmet": "^12.0.1",
+    "@fastify/jwt": "^9.0.1",
+    "@fastify/rate-limit": "^10.1.1",
+    "@fastify/sensible": "^6.0.1",
+    "@node-saml/node-saml": "^5.1.0",
+    "@prisma/client": "^5.22.0",
+    "argon2": "^0.41.1",
+    "fastify": "^5.1.0",
+    "fastify-plugin": "^5.0.1",
+    "iconv-lite": "^0.6.3",
+    "ldapts": "^8.1.8",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.15.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

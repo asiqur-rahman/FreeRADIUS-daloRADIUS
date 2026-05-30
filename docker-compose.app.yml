@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  APPLICATION LAYER — Fastify API + React Web (nginx)
+#
+#  Start just this layer:   docker compose -f docker-compose.db.yml \
+#                                          -f docker-compose.app.yml up -d
+#  Or let COMPOSE_FILE load all three files automatically (see .env).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── API — Fastify + Prisma ─────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: radius-platform/api:production
+    container_name: radius-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${APP_DB_USER:-app_user}:${APP_DB_PASSWORD:-app_user_dev_password}@postgres:5432/${POSTGRES_DB:-radius}?schema=public
+      # MD4 (PEAP-MSCHAPv2 NT-hash) is disabled in OpenSSL 3 by default.
+      # The legacy provider re-enables it without weakening other crypto.
+      NODE_OPTIONS: --openssl-legacy-provider
+      RADIUS_CA_CERT_PATH: /etc/raddb/certs-src/ca.pem
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/prisma/seed.config.json:/app/apps/api/prisma/seed.config.json:ro
+      - ./infra/freeradius/raddb/certs:/etc/raddb/certs-src:ro
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:4000/health/ready >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Web — React (Vite build) served by nginx ───────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: radius-platform/web:production
+    container_name: radius-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8123}:80"

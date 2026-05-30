@@ -1,0 +1,96 @@
+#
+# Inner-tunnel virtual server for PEAP.
+# The REST module supplies NT-Password and VLAN policy; post-auth mirrors
+# VLAN attributes to the outer reply and records the auth event.
+#
+server inner-tunnel {
+
+    listen {
+        ipaddr = 127.0.0.1
+        port = 18120
+        type = auth
+    }
+
+    authorize {
+        filter_username
+
+        update control {
+            &Proxy-To-Realm := LOCAL
+        }
+
+        chap
+        mschap
+        suffix
+
+        # The eap module MUST run in authorize so it can detect the EAP-Message
+        # attribute and set Auth-Type := EAP.  Without this, FreeRADIUS fails
+        # with "No Auth-Type found" even though the authenticate section has
+        # a bare `eap` entry.  ok = return skips subsequent modules when EAP
+        # is already fully handled (e.g. inner method already accepted).
+        eap {
+            ok = return
+        }
+
+        update control {
+            &Tmp-String-0 := "peap"
+        }
+
+        rest
+        # In FreeRADIUS 3.2.x unlang, "if (rest != ok && rest != updated)"
+        # unexpectedly evaluates to TRUE even when rest returns "updated".
+        # Explicitly enumerate the failure rcodes instead.
+        if (rest == fail || rest == reject || rest == notfound || rest == invalid) {
+            reject
+        }
+
+        expiration
+        logintime
+    }
+
+    authenticate {
+        # Use the lowercase name "mschap" — the rlm_mschap module registers
+        # its Auth-Type as "mschap" (lowercase) at instantiation time.
+        # eap_mschapv2 looks up Auth-Type by the numeric value for "MSCHAP"
+        # (case-insensitive, so it finds "mschap").  The rbtree key must match,
+        # so this section must be named "mschap" to match that key.
+        # "Auth-Type MS-CHAP" compiles to a DIFFERENT numeric key and is
+        # never found by the eap_mschapv2 → process_authenticate call.
+        Auth-Type mschap {
+            mschap
+        }
+
+        eap
+    }
+
+    session {
+        sql
+    }
+
+    post-auth {
+        update outer.reply {
+            Tunnel-Type += &reply:Tunnel-Type
+            Tunnel-Medium-Type += &reply:Tunnel-Medium-Type
+            Tunnel-Private-Group-ID := &reply:Tunnel-Private-Group-ID
+        }
+
+        rest
+        sql
+
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+
+            update outer.session-state {
+                &Module-Failure-Message := &request:Module-Failure-Message
+            }
+
+            sql
+        }
+    }
+
+    pre-proxy {
+    }
+
+    post-proxy {
+        eap
+    }
+}

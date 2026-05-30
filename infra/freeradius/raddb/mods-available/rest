@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────
+#  REST module — delegates user/device lookup and post-auth logging
+#  to the platform's Fastify hook API (apps/api).
+#
+#  ENV vars injected by docker-compose:
+#    HOOK_HOST     hostname of the api container  (e.g. "api")
+#    HOOK_PORT     HTTP port                       (default 4000)
+#    HOOK_SECRET   shared secret for X-Radius-Hook-Secret header
+# ─────────────────────────────────────────────────────────────────────
+
+rest {
+    # ── authorize ────────────────────────────────────────────────────
+    #  Called inside the PEAP inner-tunnel after the TLS handshake.
+    #  Returns NT-Password in control{} and VLAN attributes in reply{}.
+    #  HTTP 4xx → unknown user or rejected device → FreeRADIUS rejects.
+    authorize {
+        # $ENV{} is expanded at config-load time in double-quoted strings.
+        # rlm_rest 3.2.x ignores header{} blocks so the secret rides as a
+        # query-parameter on the URI instead of an HTTP header.
+        uri    = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}/api/v1/radius/authorize?s=$ENV{HOOK_SECRET}"
+        method = 'post'
+        body   = 'json'
+        data   = '{"authMethod":"%{control:Tmp-String-0}","username":"%{User-Name}","mac":"%{%{outer.request:Calling-Station-Id}:-%{Calling-Station-Id}}","nasIp":"%{NAS-IP-Address}","nasIdentifier":"%{NAS-Identifier}","calledStationId":"%{%{outer.request:Called-Station-Id}:-%{Called-Station-Id}}","certSubject":"%{session-state:TLS-Client-Cert-Subject}","certIssuer":"%{session-state:TLS-Client-Cert-Issuer}","certSerial":"%{session-state:TLS-Client-Cert-Serial}","certCommonName":"%{session-state:TLS-Client-Cert-Common-Name}","certEmail":"%{session-state:TLS-Client-Cert-Subject-Alt-Name-Email}"}'
+    }
+
+    # ── post-auth ────────────────────────────────────────────────────
+    #  Called after successful MSCHAPv2 authentication.
+    #  The hook registers the device on first connect and fires the
+    #  Telegram approval notification to the admin.
+    post-auth {
+        uri    = "http://$ENV{HOOK_HOST}:$ENV{HOOK_PORT}/api/v1/radius/post-auth?s=$ENV{HOOK_SECRET}"
+        method = 'post'
+        body   = 'json'
+        data   = '{"username":"%{User-Name}","mac":"%{outer.request:Calling-Station-Id}","nasIp":"%{NAS-IP-Address}","vlan":"%{reply:Tunnel-Private-Group-ID}"}'
+    }
+
+    # ── connection pool ──────────────────────────────────────────────
+    pool {
+        start        = 2
+        min          = 2
+        max          = 10
+        spare        = 3
+        uses         = 0
+        retry_delay  = 30
+        lifetime     = 0
+        idle_timeout = 60
+    }
+}

@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  DATA LAYER — PostgreSQL
+#
+#  Start just this layer:   docker compose -f docker-compose.db.yml up -d
+#  Or let COMPOSE_FILE load all three files automatically (see .env).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  # Single instance shared by both the API (app_user) and FreeRADIUS
+  # (radius_user).  Two least-privilege roles are created by the init scripts
+  # in infra/postgres/init/.
+  postgres:
+    image: postgres:16-alpine
+    container_name: radius-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-radius}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-radius_dev_password_change_me}
+      POSTGRES_DB:       ${POSTGRES_DB:-radius}
+      APP_DB_USER:       ${APP_DB_USER:-app_user}
+      APP_DB_PASSWORD:   ${APP_DB_PASSWORD:-app_user_dev_password}
+      RADIUS_DB_USER:    ${RADIUS_DB_USER:-radius_user}
+      RADIUS_DB_PASSWORD: ${RADIUS_DB_PASSWORD:-radius_user_dev_password}
+    ports:
+      # 5433 on the host avoids clashing with a local PostgreSQL on 5432.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radius} -d ${POSTGRES_DB:-radius}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

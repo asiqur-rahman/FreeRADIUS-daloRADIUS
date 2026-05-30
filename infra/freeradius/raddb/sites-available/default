@@ -1,0 +1,128 @@
+#
+# Default virtual server for outer EAP, accounting, and post-auth hooks.
+# This stays intentionally close to the upstream FreeRADIUS layout so the
+# parser behavior is predictable while the app-specific logic lives in the
+# SQL and REST modules plus inner-tunnel.
+#
+server default {
+
+    listen {
+        type = auth
+        ipaddr = *
+        port = 0
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 0
+    }
+
+    listen {
+        type = auth
+        ipaddr = *
+        port = 0
+        proto = tcp
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
+    }
+
+    authorize {
+        filter_username
+        preprocess
+        suffix
+
+        eap {
+            ok = return
+        }
+
+        sql
+
+        # Direct MS-CHAP (radtest / supplicant without EAP):
+        #
+        # The sql module may have set Auth-Type := EAP from radcheck (e.g. for PEAP
+        # users).  When raw MS-CHAP attributes are already present in the request this
+        # is a plain MS-CHAP exchange — override Auth-Type to MS-CHAP so the mschap
+        # module handles authenticate instead of the eap module.
+        #
+        # Controlled by the ALLOW_DIRECT_MSCHAP environment variable:
+        #   true  → direct MS-CHAP / radtest allowed (useful for lab / testing)
+        #   false → PEAP-only; direct MS-CHAP attempts are rejected (production default)
+        if ("$ENV{ALLOW_DIRECT_MSCHAP}" == "true") {
+            if (&MS-CHAP-Response || &MS-CHAP2-Response) {
+                update control {
+                    &Auth-Type := MS-CHAP
+                }
+            }
+        }
+
+        mschap
+        expiration
+        logintime
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+
+        Auth-Type CHAP {
+            chap
+        }
+
+        Auth-Type MS-CHAP {
+            mschap
+        }
+
+        mschap
+        eap
+    }
+
+    preacct {
+        preprocess
+        acct_unique
+        suffix
+    }
+
+    accounting {
+        detail
+        sql
+        exec
+        attr_filter.accounting_response
+    }
+
+    session {
+        sql
+    }
+
+    post-auth {
+        update {
+            &reply: += &session-state:
+        }
+
+        sql
+        exec
+
+        Post-Auth-Type REJECT {
+            attr_filter.access_reject
+            eap
+            sql
+        }
+    }
+
+    pre-proxy {
+    }
+
+    post-proxy {
+        eap
+    }
+}
