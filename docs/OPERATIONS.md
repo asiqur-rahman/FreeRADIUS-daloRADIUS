@@ -1,4 +1,4 @@
-# RadiusOps Operations Guide
+# Nexara Operations Guide
 
 ## Deployment
 

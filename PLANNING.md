@@ -1,7 +1,7 @@
-# RadiusOps — WPA Enterprise Approval: Status & Next Steps
+# Nexara — WPA Enterprise Approval: Status & Next Steps
 
-> **Product:** RadiusOps — Enterprise Wi-Fi Access Control Platform
-> **Developed and maintained by:** Md. Asiqur Rahman Khan
+> **Product:** Nexara — The Intelligent Nexus of Enterprise Wi-Fi Access Control
+> **Developed and maintained by:** [Md. Asiqur Rahman Khan](https://github.com/asiqur-rahman)
 
 This file tracks the **FreeRADIUS REST approval workflow** (PEAP device onboarding, Telegram/dashboard decisions, EAP-TLS managed certs). It is separate from the platform delivery phases in [`docs/DEVELOPMENT_PHASES.md`](./docs/DEVELOPMENT_PHASES.md) and [`README.md`](./README.md#phase-status), where Phases 1–6 (foundation through productionization) are already delivered in the repository.
 
@@ -64,7 +64,7 @@ apps/api  (Fastify + Prisma)
 | **Bell badge** — real pending count, SSE-updated | Done | `apps/web/src/pages/AdminDashboard.jsx` |
 | **Mobile responsive sidebar** — hamburger menu, slide-in overlay | Done | `apps/web/src/pages/AdminDashboard.jsx` |
 | **PWA** — vite-plugin-pwa, web manifest, theme-color, apple-touch-icon | Done | `apps/web/vite.config.ts`, `apps/web/index.html`, `apps/web/public/icons/` |
-| Title + meta tags updated to RadiusOps | Done | `apps/web/index.html` |
+| Title + meta tags updated to Nexara | Done | `apps/web/index.html` |
 
 ---
 

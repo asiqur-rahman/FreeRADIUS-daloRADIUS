@@ -3,7 +3,12 @@ import type { FastifyPluginAsync } from "fastify";
 import { prisma } from "../db.js";
 
 const health: FastifyPluginAsync = async (app) => {
-  app.get("/health/live", async () => ({ status: "ok", product: "RadiusOps" }));
+  app.get("/health/live", async () => ({
+    status:  "ok",
+    product: "Nexara",
+    author:  "Md. Asiqur Rahman Khan",
+    github:  "https://github.com/asiqur-rahman",
+  }));
 
   app.get("/health/ready", async (_req, reply) => {
     try {

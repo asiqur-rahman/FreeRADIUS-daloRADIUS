@@ -198,6 +198,26 @@ const adminUsers: FastifyPluginAsync = async (app) => {
       const existing = await tx.user.findUnique({ where: { id } });
       if (!existing) throw NotFound("User not found");
 
+      // ── RBAC guardrails ────────────────────────────────────────────
+      // 1. Admin cannot change their own role (prevents accidental self-lockout)
+      if (body.role !== undefined && id === actorId) {
+        throw BadRequest("You cannot change your own role.");
+      }
+      // 2. Demoting an admin requires at least one other admin to remain
+      if (body.role === "user" && existing.role === "admin") {
+        const otherAdmins = await tx.user.count({
+          where: { role: "admin", id: { not: id } },
+        });
+        if (otherAdmins === 0) {
+          throw BadRequest("Cannot demote the last admin. Promote another user to admin first.");
+        }
+      }
+      // 3. Suspending/expiring yourself is not allowed
+      if (id === actorId && body.status && body.status !== "active") {
+        throw BadRequest("You cannot suspend or expire your own account.");
+      }
+      // ──────────────────────────────────────────────────────────────
+
       const data: Prisma.UserUpdateInput = {
         email:       body.email?.toLowerCase(),
         fullName:    body.fullName,
@@ -307,11 +327,21 @@ const adminUsers: FastifyPluginAsync = async (app) => {
     const actorId = req.currentUser!.sub;
     const { id } = req.params;
 
-    if (id === actorId) throw BadRequest("Cannot delete your own account");
+    if (id === actorId) throw BadRequest("Cannot delete your own account.");
 
     await prisma.$transaction(async (tx) => {
       const existing = await tx.user.findUnique({ where: { id } });
       if (!existing) throw NotFound("User not found");
+
+      // RBAC: cannot remove the last admin
+      if (existing.role === "admin") {
+        const otherAdmins = await tx.user.count({
+          where: { role: "admin", id: { not: id } },
+        });
+        if (otherAdmins === 0) {
+          throw BadRequest("Cannot delete the last admin account. Promote another user first.");
+        }
+      }
 
       await tx.user.update({ where: { id }, data: { status: "suspended" } });
       await syncUserToRadius(tx, id);

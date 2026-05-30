@@ -24,6 +24,7 @@ import type {
   UserSummary,
 } from "@app/shared";
 import { listUserCerts, provisionUserCert, revokeUserCert, updateUser } from "../api/endpoints";
+import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 
 function toLocal(iso: string | null | undefined): string {
@@ -123,6 +124,10 @@ interface Props {
 
 export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props) {
   const { isWhiteTheme } = useTheme();
+  const { user: currentUser } = useAuth();
+  // Backend enforces these; frontend disables the controls for clarity
+  const isSelf = currentUser?.id === user.id;
+
   const [username, setUsername] = useState(user.username);
   const [email, setEmail] = useState(user.email);
   const [fullName, setFullName] = useState(user.fullName ?? "");
@@ -355,16 +360,25 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
             </Section>
 
             <Section eyebrow="Access" title="Role and state" light={isWhiteTheme}>
+              {isSelf && (
+                <div className={`rounded-[18px] border px-3 py-2 text-xs ${isWhiteTheme ? "border-amber-300/40 bg-amber-50 text-amber-700" : "border-amber-500/20 bg-amber-500/10 text-amber-300"}`}>
+                  Role and status cannot be changed for your own account.
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Role" light={isWhiteTheme}>
-                  <Select light={isWhiteTheme} value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
+                <Field label="Role" light={isWhiteTheme} hint={isSelf ? "Cannot edit own role" : undefined}>
+                  <Select light={isWhiteTheme} value={role} disabled={isSelf}
+                    onChange={(event) => setRole(event.target.value as UserRole)}
+                    className={isSelf ? "opacity-50 cursor-not-allowed" : ""}>
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
                   </Select>
                 </Field>
 
-                <Field label="Status" light={isWhiteTheme}>
-                  <Select light={isWhiteTheme} value={status} onChange={(event) => setStatus(event.target.value as UserStatus)}>
+                <Field label="Status" light={isWhiteTheme} hint={isSelf ? "Cannot suspend own account" : undefined}>
+                  <Select light={isWhiteTheme} value={status} disabled={isSelf}
+                    onChange={(event) => setStatus(event.target.value as UserStatus)}
+                    className={isSelf ? "opacity-50 cursor-not-allowed" : ""}>
                     <option value="active">Active</option>
                     <option value="suspended">Suspended</option>
                     <option value="pending">Pending</option>
