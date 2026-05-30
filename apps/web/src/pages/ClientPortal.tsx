@@ -196,7 +196,6 @@ export default function ClientPortal() {
                 <div className="mt-4">
                   <div className={`text-sm ${copyColor}`}>{greeting},</div>
                   <h1 className={`mt-1 text-[2rem] font-semibold leading-tight tracking-tight ${titleColor}`}>{firstName}.</h1>
-                  <p className={`mt-2 max-w-2xl text-sm text-balance ${copyColor}`}>{activeItem.description}</p>
                 </div>
               </div>
 
@@ -209,24 +208,6 @@ export default function ClientPortal() {
                   <LogOut className="h-4 w-4" />Sign out
                 </button>
               </div>
-            </div>
-
-            {/* Info strip */}
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {[
-                { label: "Identity",    value: user?.username || fullName, sub: "Personal access" },
-                { label: "Security",    value: user?.mfaEnabled ? "MFA on" : "Protected",       sub: null, icon: <ShieldCheck className="h-4 w-4" />, iconColor: "text-emerald-500" },
-                { label: "Access mode", value: "Enterprise Wi-Fi",                               sub: null, icon: <Wifi className="h-4 w-4 text-sky-500" /> },
-              ].map((card) => (
-                <div key={card.label} className={infoCardBg}>
-                  <div className={`text-[11px] uppercase tracking-[0.26em] ${faintColor}`}>{card.label}</div>
-                  <div className={`mt-2 flex items-center gap-2 text-sm font-semibold ${titleColor}`}>
-                    {card.icon && <span className={card.iconColor ?? ""}>{card.icon}</span>}
-                    {card.value}
-                  </div>
-                  {card.sub && <div className={`mt-1 text-xs ${copyColor}`}>{card.sub}</div>}
-                </div>
-              ))}
             </div>
           </header>
 
@@ -283,27 +264,9 @@ export default function ClientPortal() {
                     <span className="h-1 w-1 rounded-full bg-current opacity-40" />
                     <span>{user?.username || "Account"}</span>
                   </div>
-                  <div className="mt-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h1 className={`text-[1.85rem] font-semibold leading-none tracking-tight ${titleColor}`}>{firstName}.</h1>
-                      <p className={`mt-2 max-w-[18rem] text-sm leading-6 ${copyColor}`}>{activeItem.description}</p>
-                    </div>
-                    <div className={`rounded-2xl border px-3 py-2 text-right ${L ? "border-sky-100 bg-sky-50" : "border-sky-500/20 bg-sky-500/10"}`}>
-                      <div className={`text-[10px] uppercase tracking-[0.22em] ${L ? "text-sky-600" : "text-sky-300"}`}>View</div>
-                      <div className={`mt-1 text-sm font-semibold ${titleColor}`}>{activeItem.label}</div>
-                    </div>
-                  </div>
-                  <div className="hide-scrollbar mt-4 flex gap-2 overflow-x-auto">
-                    {[
-                      { label: "Identity", value: user?.username || fullName },
-                      { label: "Security", value: user?.mfaEnabled ? "MFA on" : "Protected" },
-                      { label: "Access",   value: "Ready" },
-                    ].map((c) => (
-                      <div key={c.label} className={`min-w-[9.5rem] rounded-[22px] border px-3 py-3 ${L ? "border-slate-200 bg-slate-50" : "border-white/8 bg-white/[0.04]"}`}>
-                        <div className={`text-[10px] uppercase tracking-[0.22em] ${faintColor}`}>{c.label}</div>
-                        <div className={`mt-1 truncate text-sm font-semibold ${titleColor}`}>{c.value}</div>
-                      </div>
-                    ))}
+                  <div className="mt-3">
+                    <h1 className={`text-[1.85rem] font-semibold leading-none tracking-tight ${titleColor}`}>{firstName}.</h1>
+                    <p className={`mt-2 text-sm leading-6 ${copyColor}`}>{activeItem.description}</p>
                   </div>
                 </div>
               </section>
