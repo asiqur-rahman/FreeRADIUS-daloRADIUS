@@ -147,7 +147,7 @@ export function deleteCert(token: string, id: string) {
 // -- Device approvals -------------------------------------------------------
 export function listAdminDevices(
   token: string,
-  q?: { status?: "pending" | "approved" | "rejected"; userId?: string; search?: string; page?: number; pageSize?: number },
+  q?: { status?: "pending" | "approved" | "rejected" | "blocked"; userId?: string; search?: string; page?: number; pageSize?: number },
 ) {
   const params = new URLSearchParams();
   if (q?.status) params.set("status", q.status);
@@ -158,7 +158,7 @@ export function listAdminDevices(
   const qs = params.toString();
   return api<Paginated<AdminDeviceSummary>>(`${v1}/admin/devices${qs ? `?${qs}` : ""}`, { token });
 }
-export function listUserDevicesForAdmin(token: string, userId: string, q?: { status?: "pending" | "approved" | "rejected"; search?: string; page?: number; pageSize?: number }) {
+export function listUserDevicesForAdmin(token: string, userId: string, q?: { status?: "pending" | "approved" | "rejected" | "blocked"; search?: string; page?: number; pageSize?: number }) {
   const params = new URLSearchParams();
   if (q?.status) params.set("status", q.status);
   if (q?.search) params.set("search", q.search);
@@ -178,7 +178,7 @@ export function decideAdminDevice(token: string, id: string, body: DeviceDecisio
 }
 export function listDeviceApprovals(
   token: string,
-  q?: { status?: "pending" | "approved" | "rejected"; userId?: string; search?: string; page?: number; pageSize?: number },
+  q?: { status?: "pending" | "approved" | "rejected" | "blocked"; userId?: string; search?: string; page?: number; pageSize?: number },
 ) {
   const params = new URLSearchParams();
   if (q?.status) params.set("status", q.status);

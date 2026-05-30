@@ -24,6 +24,7 @@ import { emitPlatformEvent } from "../lib/events.js";
 import { isIpAllowed } from "../lib/ipGuard.js";
 import { normalizeMac } from "../lib/mac.js";
 import { sendApprovalRequest } from "../lib/telegram.js";
+import { lookupManufacturer, classifyDeviceType } from "../lib/oui.js";
 
 // rlm_rest 3.2.x expects a FLAT dict response — nested arrays / objects are
 // silently skipped with "Found nested VP, these are not yet supported".
@@ -117,31 +118,26 @@ async function createPendingApproval(deviceId: string, request: {
   mac: string;
   nasIp: string;
 }) {
-  // Idempotency: don't create a second pending approval for the same device.
-  // Concurrent RADIUS requests for the same MAC can both reach this path
-  // before either has committed — at-most-once is good enough here.
-  const existing = await prisma.deviceApproval.findFirst({
-    where: { deviceId, status: "pending" },
-    select: { id: true },
+  // Idempotency: only send a new notification if there is no Telegram message
+  // already stored on this device (i.e. first-time pending notification).
+  const existing = await prisma.userDevice.findUnique({
+    where:  { id: deviceId },
+    select: { telegramMessageId: true },
   });
-  if (existing) return;
+  if (existing?.telegramMessageId) return;
 
-  const approval = await prisma.deviceApproval.create({
-    data: { deviceId, status: "pending" },
-  });
-
-  // Send the Telegram notification and store message IDs for bidirectional sync.
+  // Send the Telegram notification and store message IDs on the device directly.
   const tgRef = await sendApprovalRequest({
     deviceId,
     username: request.username,
     fullName: request.fullName,
-    mac: request.mac,
-    nasIp: request.nasIp,
+    mac:      request.mac,
+    nasIp:    request.nasIp,
   });
 
   if (tgRef) {
-    await prisma.deviceApproval.update({
-      where: { id: approval.id },
+    await prisma.userDevice.update({
+      where: { id: deviceId },
       data: {
         telegramChatId:    BigInt(tgRef.chatId),
         telegramMessageId: tgRef.messageId,
@@ -199,27 +195,34 @@ async function authorizePeap(
     select: { id: true, status: true },
   });
 
-  if (device?.status === "rejected") {
-    req.log.info({ username, mac: normalizedMac }, "radius.authorize device rejected");
-    return reply.status(403).send({ error: "Device rejected" });
-  }
-
   const isNew = !device;
   const status = device?.status ?? "new";
 
+  // ── Blocked devices: silent permanent reject, never re-register ──────────
+  if (status === "blocked") {
+    req.log.info({ username, mac: normalizedMac }, "radius.authorize device_blocked");
+    return reply.status(403).send({ error: "Access denied" });
+  }
+
   if (c.DEVICE_APPROVAL_REQUIRED && status !== "approved") {
+    const manufacturer = lookupManufacturer(normalizedMac);
+    const deviceType   = classifyDeviceType(manufacturer);
+
     if (isNew) {
       // Register the device as pending so the admin can see and approve it.
       const pending = await prisma.userDevice.upsert({
-        where: { userId_mac: { userId: user.id, mac: normalizedMac } },
-        create: { userId: user.id, mac: normalizedMac, status: "pending", lastSeenAt: new Date() },
-        update: { lastSeenAt: new Date() },
+        where:  { userId_mac: { userId: user.id, mac: normalizedMac } },
+        create: {
+          userId: user.id, mac: normalizedMac, status: "pending",
+          lastSeenAt: new Date(), manufacturer, deviceType,
+        },
+        update: { lastSeenAt: new Date(), manufacturer, deviceType },
       });
       createPendingApproval(pending.id, {
         username: user.username,
         fullName: user.fullName,
-        mac: normalizedMac,
-        nasIp: body.nasIp,
+        mac:      normalizedMac,
+        nasIp:    body.nasIp,
       }).catch((err) => {
         req.log.error({ err, deviceId: pending.id }, "radius.peap.pending_notify failed");
       });
@@ -227,13 +230,42 @@ async function authorizePeap(
         deviceId: pending.id,
         username: user.username,
         fullName: user.fullName,
-        mac: normalizedMac,
-        nasIp: body.nasIp,
-        isNew: true,
+        mac:      normalizedMac,
+        nasIp:    body.nasIp,
+        isNew:    true,
       });
-      req.log.info({ username, mac: normalizedMac, deviceId: pending.id }, "radius.authorize new_device_registered_rejected");
+      req.log.info({ username, mac: normalizedMac, deviceId: pending.id }, "radius.authorize new_device_registered");
+    } else if (status === "rejected") {
+      // Rejected devices can re-apply — reset to pending and notify admin.
+      await prisma.userDevice.update({
+        where: { id: device!.id },
+        data:  { status: "pending", lastSeenAt: new Date(), manufacturer, deviceType,
+                 telegramChatId: null, telegramMessageId: null },
+      });
+      createPendingApproval(device!.id, {
+        username: user.username,
+        fullName: user.fullName,
+        mac:      normalizedMac,
+        nasIp:    body.nasIp,
+      }).catch((err) => {
+        req.log.error({ err, deviceId: device!.id }, "radius.peap.re_apply_notify failed");
+      });
+      emitPlatformEvent("device.pending", {
+        deviceId: device!.id,
+        username: user.username,
+        fullName: user.fullName,
+        mac:      normalizedMac,
+        nasIp:    body.nasIp,
+        isNew:    false,
+      });
+      req.log.info({ username, mac: normalizedMac }, "radius.authorize rejected_device_reapplied");
     } else {
-      req.log.info({ username, mac: normalizedMac, deviceStatus: status }, "radius.authorize device_pending_rejected");
+      // Still pending
+      await prisma.userDevice.update({
+        where: { id: device!.id },
+        data:  { lastSeenAt: new Date() },
+      });
+      req.log.info({ username, mac: normalizedMac, deviceStatus: status }, "radius.authorize device_pending");
     }
     return reply.status(403).send({ error: "Device pending approval" });
   }
@@ -304,11 +336,6 @@ async function authorizeEapTls(
           },
         },
       },
-      approvals: {
-        where: { status: "pending" },
-        select: { id: true },
-        take: 1,
-      },
     },
   });
 
@@ -327,6 +354,11 @@ async function authorizeEapTls(
       return reply.status(403).send({ error: "Certificate presented from an unexpected device" });
     }
 
+    if (device.status === "blocked") {
+      req.log.info({ username: device.user.username, mac: normalizedMac }, "radius.authorize eap-tls device blocked");
+      return reply.status(403).send({ error: "Access denied" });
+    }
+
     if (device.status === "rejected") {
       req.log.info({ username: device.user.username, mac: normalizedMac, fingerprint: certificate.fingerprint }, "radius.authorize eap-tls device rejected");
       return reply.status(403).send({ error: "Device rejected" });
@@ -334,19 +366,19 @@ async function authorizeEapTls(
 
     await prisma.userDevice.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
 
-    if (device.status === "pending" && device.approvals.length === 0) {
+    if (device.status === "pending" && !device.telegramMessageId) {
       req.log.info({ username: device.user.username, mac: normalizedMac, deviceId: device.id }, "radius.eap_tls.pending_device");
       createPendingApproval(device.id, {
         username: device.user.username,
         fullName: device.user.fullName,
-        mac: normalizedMac,
-        nasIp: body.nasIp,
+        mac:      normalizedMac,
+        nasIp:    body.nasIp,
       }).catch((err) => {
         req.log.error({ err, deviceId: device.id }, "radius.eap_tls.pending_notify failed");
       });
     }
 
-    const replyAttrs = replyForDevice(device.user.groups, device.status);
+    const replyAttrs = replyForDevice(device.user.groups, device.status as "pending" | "approved" | "rejected");
     req.log.info(
       { username: device.user.username, mac: normalizedMac, deviceStatus: device.status, authMethod: "eap-tls", certFingerprint: certificate.fingerprint },
       "radius.authorize eap-tls",
@@ -375,14 +407,6 @@ async function authorizeEapTls(
       "radius.authorize eap-tls certificate not registered",
     );
     return reply.status(403).send({ error: "Certificate not registered" });
-  }
-
-  if (userCert.revokedAt) {
-    req.log.info(
-      { username: userCert.user.username, mac: normalizedMac, fingerprint: certificate.fingerprint },
-      "radius.authorize eap-tls user cert revoked",
-    );
-    return reply.status(403).send({ error: "Certificate revoked" });
   }
 
   if (userCert.expiresAt < new Date()) {
@@ -504,6 +528,20 @@ const radiusRoutes: FastifyPluginAsync = async (app) => {
     });
     const isNew = !existing;
 
+    const manufacturer = lookupManufacturer(normalizedMac);
+    const deviceType   = classifyDeviceType(manufacturer);
+
+    // Fetch last known IP from radacct
+    const ipRow = await prisma.$queryRaw<Array<{ ip: string }>>`
+      SELECT host(framedipaddress) AS ip
+      FROM radacct
+      WHERE callingstationid = ${normalizedMac}
+        AND framedipaddress IS NOT NULL
+      ORDER BY acctstarttime DESC
+      LIMIT 1
+    `.catch(() => [] as Array<{ ip: string }>);
+    const lastIp = ipRow[0]?.ip ?? null;
+
     const device = await prisma.userDevice.upsert({
       where: { userId_mac: { userId: user.id, mac: normalizedMac } },
       create: {
@@ -511,18 +549,24 @@ const radiusRoutes: FastifyPluginAsync = async (app) => {
         mac: normalizedMac,
         lastSeenAt: new Date(),
         status: "pending",
+        manufacturer,
+        deviceType,
+        ...(lastIp ? { lastIp } : {}),
       },
       update: {
         lastSeenAt: new Date(),
+        manufacturer,
+        deviceType,
+        ...(lastIp ? { lastIp } : {}),
       },
     });
 
     if (isNew) {
-      req.log.info({ username, mac: normalizedMac, deviceId: device.id }, "radius.new_device");
+      req.log.info({ username, mac: normalizedMac, deviceId: device.id, deviceType }, "radius.new_device");
       createPendingApproval(device.id, {
         username: user.username,
         fullName: user.fullName,
-        mac: normalizedMac,
+        mac:      normalizedMac,
         nasIp,
       }).catch((err) => {
         req.log.error({ err, deviceId: device.id }, "telegram.send_approval_request failed");
@@ -533,9 +577,9 @@ const radiusRoutes: FastifyPluginAsync = async (app) => {
         deviceId: device.id,
         username: user.username,
         fullName: user.fullName,
-        mac: normalizedMac,
+        mac:      normalizedMac,
         nasIp,
-        isNew: true,
+        isNew:    true,
       });
     }
 

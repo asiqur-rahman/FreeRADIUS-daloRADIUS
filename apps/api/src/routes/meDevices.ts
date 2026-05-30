@@ -27,15 +27,18 @@ const MAX_DEVICES = 5;
 
 function toDevice(device: DeviceRecord, observedAt?: Date | null): UserDevice {
   return {
-    id: device.id,
-    mac: device.mac,
-    label: device.label,
-    isPrimary: device.isPrimary,
+    id:              device.id,
+    mac:             device.mac,
+    label:           device.label,
+    isPrimary:       device.isPrimary,
     certFingerprint: device.certFingerprint,
-    learnedAt: device.learnedAt.toISOString(),
-    verifiedAt: device.verifiedAt?.toISOString() ?? null,
-    lastSeenAt: (observedAt ?? device.lastSeenAt)?.toISOString() ?? null,
-    status: device.status,
+    manufacturer:    device.manufacturer ?? null,
+    deviceType:      device.deviceType,
+    lastIp:          device.lastIp ?? null,
+    learnedAt:       device.learnedAt.toISOString(),
+    verifiedAt:      device.verifiedAt?.toISOString() ?? null,
+    lastSeenAt:      (observedAt ?? device.lastSeenAt)?.toISOString() ?? null,
+    status:          device.status,
   };
 }
 

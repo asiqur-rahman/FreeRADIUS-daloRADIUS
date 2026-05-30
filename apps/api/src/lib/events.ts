@@ -26,7 +26,7 @@ export interface DeviceDecidedPayload {
   deviceId: string;
   username: string;
   mac: string;
-  status: "approved" | "rejected";
+  status: "approved" | "rejected" | "blocked";
   source: "telegram" | "admin_api";
 }
 

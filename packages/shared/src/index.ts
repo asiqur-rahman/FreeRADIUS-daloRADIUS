@@ -9,7 +9,8 @@ export type UserRole = "admin" | "user";
 
 export type UserStatus = "pending" | "active" | "suspended" | "expired";
 
-export type DeviceStatus = "pending" | "approved" | "rejected";
+export type DeviceStatus = "pending" | "approved" | "rejected" | "blocked";
+export type DeviceType   = "laptop" | "mobile" | "tablet" | "iot" | "printer" | "network" | "gaming" | "tv" | "unknown";
 
 export interface UserSummary {
   id: string;
@@ -176,15 +177,18 @@ export interface EapCertificate {
 // -- Devices and accounting sessions ----------------------------------------
 
 export interface UserDevice {
-  id: string;
-  mac: string;
-  label: string | null;
-  isPrimary: boolean;
+  id:              string;
+  mac:             string;
+  label:           string | null;
+  isPrimary:       boolean;
   certFingerprint: string | null;
-  learnedAt: string;
-  verifiedAt: string | null;
-  lastSeenAt: string | null;
-  status: DeviceStatus;
+  manufacturer:    string | null;
+  deviceType:      DeviceType;
+  lastIp:          string | null;
+  learnedAt:       string;
+  verifiedAt:      string | null;
+  lastSeenAt:      string | null;
+  status:          DeviceStatus;
 }
 
 export interface CreateDeviceRequest {
@@ -199,18 +203,30 @@ export interface UpdateDeviceRequest {
 }
 
 export interface AdminDeviceSummary extends UserDevice {
-  userId: string;
+  userId:       string;
+  username:     string;
+  fullName:     string | null;
+  email:        string;
+  decidedAt:    string | null;
+  decidedBy:    string | null;
+  decisionNote: string | null;
+}
+
+export interface DeviceApprovalEntry {
+  id: string;
   username: string;
   fullName: string | null;
-  email: string;
-  requestedAt: string | null;
+  mac: string;
+  deviceLabel: string | null;
+  status: DeviceStatus;
+  requestedAt: string;
   decidedAt: string | null;
   decidedBy: string | null;
-  decisionNotes: string | null;
+  notes: string | null;
 }
 
 export interface DeviceDecisionRequest {
-  status: Exclude<DeviceStatus, "pending">;
+  status: "approved" | "rejected" | "blocked";
   notes?: string | null;
 }
 
@@ -262,21 +278,6 @@ export interface DeviceCertificateClearResponse extends DeviceCertificateMutatio
   alreadyCleared: boolean;
 }
 
-export interface DeviceApprovalEntry {
-  id: string;
-  deviceId: string;
-  userId: string;
-  username: string;
-  fullName: string | null;
-  email: string;
-  mac: string;
-  deviceLabel: string | null;
-  status: DeviceStatus;
-  requestedAt: string;
-  decidedAt: string | null;
-  decidedBy: string | null;
-  notes: string | null;
-}
 
 export interface RadiusSession {
   id: string;
@@ -368,17 +369,17 @@ export interface MfaSetupResponse {
 // ── User-level client certificates (EAP-TLS) ─────────────────────────
 
 export interface UserClientCert {
-  id: string;
-  fingerprint: string;
-  commonName: string;
+  id:             string;
+  fingerprint:    string;
+  commonName:     string;
   /** Public certificate PEM — stored for re-download. Private key is never stored. */
-  certPem: string | null;
-  /** PKCS12 password — visible until the cert is revoked. Null for legacy certs issued before this field was added. */
+  certPem:        string | null;
+  /** PKCS12 password (decrypted server-side). Null for legacy certs without stored password. */
   pkcs12Password: string | null;
-  expiresAt: string;
-  revokedAt: string | null;
-  notes: string | null;
-  createdAt: string;
+  expiresAt:      string;
+  revokedAt:      string | null;
+  notes:          string | null;
+  createdAt:      string;
 }
 
 export interface MyCertsResponse {

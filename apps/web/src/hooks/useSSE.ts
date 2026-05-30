@@ -73,5 +73,5 @@ export function useSSE(
       if (retryTimer !== null) clearTimeout(retryTimer);
       es?.close();
     };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token]);
 }

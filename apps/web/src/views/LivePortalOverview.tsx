@@ -45,22 +45,22 @@ export function LivePortalOverview() {
 
   return (
     <div className="space-y-6">
-      <div className={`relative overflow-hidden rounded-3xl p-8 text-white ${active ? "bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600" : "bg-gradient-to-br from-stone-700 to-stone-900"}`}>
+      <div className={`relative overflow-hidden rounded-[28px] p-5 text-white sm:rounded-3xl sm:p-8 ${active ? "bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600" : "bg-gradient-to-br from-stone-700 to-stone-900"}`}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-32 translate-x-32 blur-2xl" />
         <div className="relative">
           <div className="flex items-center gap-2 mb-2 text-white/85">
             <div className={`w-2 h-2 rounded-full ${active ? "bg-white animate-pulse" : "bg-stone-400"}`} />
             <span className="text-xs font-semibold uppercase tracking-wider">{active ? "Connected" : "No active Wi-Fi session"}</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ fontFamily: "ui-serif, Georgia, serif" }}>
+          <h2 className="text-[1.65rem] sm:text-3xl font-semibold tracking-tight leading-tight" style={{ fontFamily: "ui-serif, Georgia, serif" }}>
             {active ? "You're online." : "You're currently offline."}
           </h2>
           {active && (
-            <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-              <div><div className="text-[10px] uppercase tracking-wider text-white/70">Device</div><div className="text-base font-semibold mt-1">{active.deviceLabel || active.callingStationId}</div></div>
-              <div><div className="text-[10px] uppercase tracking-wider text-white/70">Access Point</div><div className="text-base font-semibold mt-1">{active.nasName || active.nasIp}</div></div>
-              <div><div className="text-[10px] uppercase tracking-wider text-white/70">IP Address</div><div className="text-base font-semibold mt-1 font-mono">{active.framedIpAddress || "-"}</div></div>
-              <div><div className="text-[10px] uppercase tracking-wider text-white/70">Session</div><div className="text-base font-semibold mt-1">{duration(active.durationSeconds)}</div></div>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:grid-cols-4 sm:gap-4">
+              <div><div className="text-[10px] uppercase tracking-wider text-white/70">Device</div><div className="mt-1 text-sm font-semibold sm:text-base">{active.deviceLabel || active.callingStationId}</div></div>
+              <div><div className="text-[10px] uppercase tracking-wider text-white/70">Access Point</div><div className="mt-1 text-sm font-semibold sm:text-base">{active.nasName || active.nasIp}</div></div>
+              <div><div className="text-[10px] uppercase tracking-wider text-white/70">IP Address</div><div className="mt-1 text-sm font-semibold font-mono sm:text-base">{active.framedIpAddress || "-"}</div></div>
+              <div><div className="text-[10px] uppercase tracking-wider text-white/70">Session</div><div className="mt-1 text-sm font-semibold sm:text-base">{duration(active.durationSeconds)}</div></div>
             </div>
           )}
         </div>
@@ -86,7 +86,7 @@ export function LivePortalOverview() {
         </div>
       </div>
 
-      <div className="bg-white border border-stone-200 rounded-2xl p-6">
+      <div className="bg-white border border-stone-200 rounded-[24px] p-5 sm:rounded-2xl sm:p-6">
         <h3 className="text-base font-semibold text-stone-900 mb-4" style={{ fontFamily: "ui-serif, Georgia, serif" }}>Recent network sessions</h3>
         {recent.length === 0 ? (
           <p className="text-sm text-stone-500">No accounting activity recorded yet.</p>
@@ -95,11 +95,11 @@ export function LivePortalOverview() {
             <div className={`w-9 h-9 rounded-full flex items-center justify-center ${session.stoppedAt ? "bg-stone-100 text-stone-500" : "bg-emerald-50 text-emerald-600"}`}>
               {session.stoppedAt ? <Laptop className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-stone-900">{session.deviceLabel || session.callingStationId}</div>
-              <div className="text-xs text-stone-500">{session.nasName || session.nasIp}</div>
+              <div className="truncate text-xs text-stone-500">{session.nasName || session.nasIp}</div>
             </div>
-            <div className="text-xs text-stone-500 flex items-center gap-1">
+            <div className="hidden text-xs text-stone-500 sm:flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {when(session.updatedAt || session.startedAt)}
             </div>

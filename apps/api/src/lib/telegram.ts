@@ -152,33 +152,23 @@ export async function sendApprovalRequest(opts: {
 
 /**
  * Edit the approval message after a web-side decision so Telegram stays in sync.
- * Looks up stored chat/message IDs from the pending DeviceApproval.
+ * Reads chat/message IDs directly from UserDevice (no DeviceApproval table).
  */
 export async function notifyTelegramDecision(opts: {
-  deviceId: string;
-  status:   "approved" | "rejected";
+  deviceId:    string;
+  status:      "approved" | "rejected" | "blocked";
   deciderName: string;
 }): Promise<void> {
   const { botToken, adminChatId } = await getTelegramSettings();
   if (!botToken || !adminChatId) return;
 
-  // Find the pending approval that has a Telegram message reference
-  const approval = await prisma.deviceApproval.findFirst({
-    where: {
-      deviceId:          opts.deviceId,
-      telegramMessageId: { not: null },
-    },
-    orderBy: { requestedAt: "desc" },
-  });
-  if (!approval?.telegramMessageId || !approval.telegramChatId) return;
-
   const device = await prisma.userDevice.findUnique({
-    where: { id: opts.deviceId },
+    where:   { id: opts.deviceId },
     include: { user: { select: { username: true, fullName: true } } },
   });
-  if (!device) return;
+  if (!device?.telegramMessageId || !device.telegramChatId) return;
 
-  const emoji = opts.status === "approved" ? "✅" : "❌";
+  const emoji = opts.status === "approved" ? "✅" : opts.status === "blocked" ? "🚫" : "❌";
   const displayName = device.user.fullName
     ? `${device.user.username} (${device.user.fullName})`
     : device.user.username;
@@ -189,10 +179,10 @@ export async function notifyTelegramDecision(opts: {
     `_Decided by ${opts.deciderName}_`,
   ].join("\n");
 
-  const chatId = Number(approval.telegramChatId);
+  const chatId = Number(device.telegramChatId);
   await tgCall(botToken, "editMessageText", {
     chat_id:    chatId,
-    message_id: approval.telegramMessageId,
+    message_id: device.telegramMessageId,
     text:       replyText,
     parse_mode: "Markdown",
   }).catch(() =>

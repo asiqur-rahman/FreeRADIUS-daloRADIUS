@@ -18,23 +18,23 @@ export function PwaUpdateBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm"
+      className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 bottom-[calc(13rem+env(safe-area-inset-bottom))] md:bottom-auto md:top-4"
     >
-      <div className="flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-900/95 px-4 py-3 shadow-2xl backdrop-blur-sm">
+      <div className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-zinc-900/95 px-4 py-3 shadow-2xl backdrop-blur-sm">
         <RefreshCw className="h-4 w-4 shrink-0 text-blue-400" />
         <p className="flex-1 text-sm text-zinc-200">
           A new version is available.
         </p>
         <button
           onClick={() => updateServiceWorker(true)}
-          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 active:bg-blue-700"
+          className="rounded-full bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 active:bg-blue-700"
         >
           Update
         </button>
         <button
           onClick={() => setNeedRefresh(false)}
           aria-label="Dismiss"
-          className="rounded-md p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+          className="rounded-full p-1 text-zinc-500 transition-colors hover:text-zinc-300"
         >
           <X className="h-4 w-4" />
         </button>

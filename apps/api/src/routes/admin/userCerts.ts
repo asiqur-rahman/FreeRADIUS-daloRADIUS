@@ -53,9 +53,8 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
       fingerprint:    c.fingerprint,
       commonName:     c.commonName,
       certPem:        c.certPem ?? null,
-      pkcs12Password: c.revokedAt ? null : decryptPassword(c.pkcs12Password),
+      pkcs12Password: decryptPassword(c.pkcs12Password),
       expiresAt:      c.expiresAt.toISOString(),
-      revokedAt:      c.revokedAt?.toISOString() ?? null,
       notes:          c.notes,
       createdAt:      c.createdAt.toISOString(),
     }));
@@ -76,17 +75,21 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
       pkcs12Password: body.pkcs12Password,
     });
 
-    await prisma.userClientCert.create({
-      data: {
-        userId:         id,
-        fingerprint:    bundle.fingerprint,
-        commonName:     bundle.commonName,
-        certPem:        bundle.certificatePem,
-        pkcs12Password: encrypt(bundle.pkcs12Password),
-        expiresAt:      bundle.expiresAt,
-        notes:          body.notes ?? null,
-      },
-    });
+    // One cert per user — delete any existing cert before creating the new one
+    await prisma.$transaction([
+      prisma.userClientCert.deleteMany({ where: { userId: id } }),
+      prisma.userClientCert.create({
+        data: {
+          userId:         id,
+          fingerprint:    bundle.fingerprint,
+          commonName:     bundle.commonName,
+          certPem:        bundle.certificatePem,
+          pkcs12Password: encrypt(bundle.pkcs12Password),
+          expiresAt:      bundle.expiresAt,
+          notes:          body.notes ?? null,
+        },
+      }),
+    ]);
 
     await audit({
       actorId,
@@ -116,10 +119,8 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
     });
     if (!cert) throw NotFound("Certificate not found");
 
-    await prisma.userClientCert.update({
-      where: { id: cert.id },
-      data:  { revokedAt: new Date() },
-    });
+    // Delete entirely — no revokedAt history
+    await prisma.userClientCert.delete({ where: { id: cert.id } });
 
     await audit({
       actorId,

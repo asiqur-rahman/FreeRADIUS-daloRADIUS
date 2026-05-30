@@ -57,6 +57,8 @@ enum AuditAction {
   mfa_disable
   device_approve
   device_reject
+  device_block
+  device_unblock
   radius_ip_create
   radius_ip_delete
   radius_ip_update
@@ -73,6 +75,19 @@ enum DeviceStatus {
   pending
   approved
   rejected
+  blocked   // permanently banned — never auto-registers again
+}
+
+enum DeviceType {
+  laptop
+  mobile
+  tablet
+  iot
+  printer
+  network
+  gaming
+  tv
+  unknown
 }
 
 // ── Users & credentials ───────────────────────────────────────────────
@@ -93,14 +108,13 @@ model User {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  secret    UserSecret?
-  groups    UserGroup[]
-  devices   UserDevice[]
+  secret      UserSecret?
+  groups      UserGroup[]
+  devices     UserDevice[]
   clientCerts UserClientCert[]
-  auditLogs AuditLog[]   @relation("AuditActor")
-  events    AuthEvent[]
-  tokens            ApiToken[]
-  approvalDecisions DeviceApproval[] @relation("ApprovalDecisions")
+  auditLogs   AuditLog[]   @relation("AuditActor")
+  events      AuthEvent[]
+  tokens      ApiToken[]
 
   @@index([status])
   @@map("users")
@@ -125,48 +139,34 @@ model UserSecret {
 //   Read by FreeRADIUS at PEAP post-auth (see inner-tunnel snippet).
 
 model UserDevice {
-  id              String    @id @default(cuid())
+  id              String       @id @default(cuid())
   userId          String
-  mac             String    @db.VarChar(17) // canonical lowercase, colon-separated
-  label           String?   @db.VarChar(80)
-  isPrimary       Boolean   @default(false)
-  certFingerprint String?   @db.VarChar(64)
+  mac             String       @db.VarChar(17)  // canonical lowercase, colon-separated
+  label           String?      @db.VarChar(80)
+  isPrimary       Boolean      @default(false)
+  certFingerprint String?      @db.VarChar(64)
   learnedAt       DateTime     @default(now())
   verifiedAt      DateTime?
   lastSeenAt      DateTime?
   status          DeviceStatus @default(pending)
+  // ── NAC enrichment (populated from MAC OUI + RADIUS accounting) ───
+  manufacturer      String?    @db.VarChar(128)  // from MAC OUI lookup, e.g. "Apple Inc."
+  deviceType        DeviceType @default(unknown)  // classified from OUI manufacturer
+  lastIp            String?    @db.VarChar(45)   // last known IP from radacct
+  // ── Decision metadata (replaces the old DeviceApproval history table) ─
+  decidedAt         DateTime?
+  decidedBy         String?                       // admin user id
+  decisionNote      String?    @db.VarChar(500)
+  // ── Telegram sync (message IDs for bidirectional web/Telegram updates) ─
+  telegramChatId    BigInt?
+  telegramMessageId Int?
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  approvals DeviceApproval[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, mac])
   @@index([mac])
   @@index([status])
   @@map("user_devices")
-}
-
-// ── Device approval workflow ─────────────────────────────────────────
-//   One approval record per decision event, linked to the device.
-//   Created when a new device connects (status: pending), updated when
-//   an admin approves or rejects via Telegram or the dashboard.
-
-model DeviceApproval {
-  id                String       @id @default(cuid())
-  deviceId          String
-  requestedAt       DateTime     @default(now())
-  decidedAt         DateTime?
-  decidedBy         String?      // admin user id — null for Telegram decisions
-  status            DeviceStatus @default(pending)
-  notes             String?      @db.VarChar(500)
-  // Telegram message reference — stored so web-side decisions can edit the message
-  telegramChatId    BigInt?
-  telegramMessageId Int?
-
-  device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  admin  User?      @relation("ApprovalDecisions", fields: [decidedBy], references: [id])
-
-  @@index([status, requestedAt])
-  @@map("device_approvals")
 }
 
 // ── Groups & policy ──────────────────────────────────────────────────
@@ -346,7 +346,6 @@ model UserClientCert {
   /// Decrypted server-side before returning to the client.
   pkcs12Password String?   @db.VarChar(512)
   expiresAt      DateTime
-  revokedAt      DateTime?
   notes          String?   @db.VarChar(500)
   createdAt      DateTime  @default(now())
 

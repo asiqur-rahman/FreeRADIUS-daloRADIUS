@@ -112,7 +112,7 @@ export function LiveNasView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <Header onCreate={() => setCreating(true)} onReload={reload} loading={loading} />
         <PageHelp title="NAS Clients" description="Network Access Servers (NAS) are the access points, switches, or controllers that forward RADIUS authentication requests to this server. Each NAS must have a registered IP address and a shared secret that exactly matches the device's own RADIUS client configuration." tips={["The shared secret must match exactly what is configured on the AP or switch — a mismatch causes all authentication requests from that device to silently fail", "CoA port (default 3799) is used to send Disconnect-Requests and policy-change packets to live sessions on the NAS", "NAS entries are stored in the 'nas' Postgres table and read by FreeRADIUS via the SQL module — no SSH or config file editing required"]} />
       </div>
@@ -271,24 +271,30 @@ function Header({
   loading: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2 text-sm text-zinc-300">
-        <Cpu className="w-4 h-4 text-indigo-400" />
-        <span className="font-medium text-zinc-100">NAS clients</span>
-        <span className="text-zinc-500">— APs, WLCs, switches allowed to send RADIUS</span>
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex items-start gap-3 text-sm text-zinc-300">
+        <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500/12 text-indigo-300">
+          <Cpu className="w-4.5 h-4.5" />
+        </div>
+        <div>
+          <div className="font-medium text-zinc-100">NAS clients</div>
+          <div className="mt-1 max-w-2xl text-zinc-500">
+            APs, WLCs, and switches allowed to send RADIUS traffic into this platform.
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={onReload}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-[18px] border border-white/8 bg-white/[0.04] px-3 py-2 text-xs text-zinc-200 transition hover:bg-white/[0.08] disabled:opacity-50"
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           Reload
         </button>
         <button
           onClick={onCreate}
-          className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-indigo-500 hover:bg-indigo-400 text-white font-medium"
+          className="inline-flex items-center gap-1.5 rounded-[18px] bg-sky-400 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:brightness-105"
         >
           <Plus className="w-3.5 h-3.5" />
           Add NAS
@@ -327,63 +333,118 @@ function Table({
     );
   }
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-zinc-900/60 text-[11px] uppercase tracking-wider text-zinc-500">
-          <tr>
-            <th className="text-left px-4 py-2.5">Shortname</th>
-            <th className="text-left px-4 py-2.5">NAS address</th>
-            <th className="text-left px-4 py-2.5">Vendor</th>
-            <th className="text-left px-4 py-2.5">CoA port</th>
-            <th className="text-left px-4 py-2.5">Status</th>
-            <th className="text-right px-4 py-2.5">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((n) => (
-            <tr key={n.id} className="border-t border-zinc-800/60 hover:bg-zinc-900/60">
-              <td className="px-4 py-2.5 font-medium text-zinc-100">{n.shortname}</td>
-              <td className="px-4 py-2.5 text-zinc-300 font-mono text-xs">{n.nasname}</td>
-              <td className="px-4 py-2.5 text-zinc-400 capitalize">{n.type}</td>
-              <td className="px-4 py-2.5 text-zinc-400">{n.coaPort}</td>
-              <td className="px-4 py-2.5">
-                <button
-                  onClick={() => onToggleEnabled(n)}
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                    n.enabled
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-zinc-700/40 text-zinc-400"
-                  }`}
-                  title="Toggle enabled"
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${n.enabled ? "bg-emerald-400" : "bg-zinc-500"}`}
-                  />
-                  {n.enabled ? "Enabled" : "Disabled"}
-                </button>
-              </td>
-              <td className="px-4 py-2.5">
-                <div className="flex items-center justify-end gap-1">
-                  <button
-                    onClick={() => onRotate(n.id)}
-                    className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100"
-                    title="Rotate shared secret"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(n.id)}
-                    className="p-1.5 rounded-md hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </td>
+    <div className="space-y-4">
+      <div className="space-y-4 lg:hidden">
+        {items.map((nas) => (
+          <div key={nas.id} className="rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-base font-semibold tracking-tight text-zinc-100">{nas.shortname}</div>
+                <div className="mt-1 font-mono text-xs text-zinc-500">{nas.nasname}</div>
+              </div>
+              <button
+                onClick={() => onToggleEnabled(nas)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                  nas.enabled
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                    : "border-white/8 bg-white/[0.04] text-zinc-400"
+                }`}
+                title="Toggle enabled"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${nas.enabled ? "bg-emerald-400" : "bg-zinc-500"}`} />
+                {nas.enabled ? "Enabled" : "Disabled"}
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 text-sm text-zinc-500 sm:grid-cols-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-600">Vendor</div>
+                <div className="mt-2 capitalize text-zinc-300">{nas.type}</div>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-600">CoA port</div>
+                <div className="mt-2 text-zinc-300">{nas.coaPort}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => onRotate(nas.id)}
+                className="inline-flex items-center gap-1.5 rounded-[18px] border border-white/8 px-3 py-2 text-xs font-medium text-zinc-200 transition hover:bg-white/[0.05] hover:text-white"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                Rotate secret
+              </button>
+              <button
+                onClick={() => onDelete(nas.id)}
+                className="inline-flex items-center gap-1.5 rounded-[18px] bg-rose-500/90 px-3 py-2 text-xs font-semibold text-white transition hover:brightness-105"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/40 lg:block">
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-900/60 text-[11px] uppercase tracking-wider text-zinc-500">
+            <tr>
+              <th className="text-left px-4 py-2.5">Shortname</th>
+              <th className="text-left px-4 py-2.5">NAS address</th>
+              <th className="text-left px-4 py-2.5">Vendor</th>
+              <th className="text-left px-4 py-2.5">CoA port</th>
+              <th className="text-left px-4 py-2.5">Status</th>
+              <th className="text-right px-4 py-2.5">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((n) => (
+              <tr key={n.id} className="border-t border-zinc-800/60 hover:bg-zinc-900/60">
+                <td className="px-4 py-2.5 font-medium text-zinc-100">{n.shortname}</td>
+                <td className="px-4 py-2.5 text-zinc-300 font-mono text-xs">{n.nasname}</td>
+                <td className="px-4 py-2.5 text-zinc-400 capitalize">{n.type}</td>
+                <td className="px-4 py-2.5 text-zinc-400">{n.coaPort}</td>
+                <td className="px-4 py-2.5">
+                  <button
+                    onClick={() => onToggleEnabled(n)}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                      n.enabled
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : "bg-zinc-700/40 text-zinc-400"
+                    }`}
+                    title="Toggle enabled"
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${n.enabled ? "bg-emerald-400" : "bg-zinc-500"}`}
+                    />
+                    {n.enabled ? "Enabled" : "Disabled"}
+                  </button>
+                </td>
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => onRotate(n.id)}
+                      className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100"
+                      title="Rotate shared secret"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => onDelete(n.id)}
+                      className="p-1.5 rounded-md hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -465,7 +526,7 @@ function CreateModal({
             className="w-full px-3 py-1.5 rounded-md bg-zinc-950 border border-zinc-800 text-sm text-zinc-100 font-mono"
           />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Vendor">
             <select
               value={form.type}
@@ -615,15 +676,15 @@ function Modal({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="w-full max-w-md rounded-t-[28px] border-x-0 border-b-0 bg-zinc-900 shadow-2xl sm:rounded-xl sm:border sm:border-zinc-800">
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5 safe-bottom">{children}</div>
       </div>
     </div>
   );

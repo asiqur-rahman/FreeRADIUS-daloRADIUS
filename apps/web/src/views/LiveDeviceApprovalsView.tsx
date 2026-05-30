@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   CheckCircle2,
   Clock3,
@@ -8,41 +9,55 @@ import {
   ShieldCheck,
   Smartphone,
   UserRound,
+  X,
   XCircle,
 } from "lucide-react";
-import type {
-  AdminDeviceSummary,
-  DeviceApprovalEntry,
-} from "@app/shared";
+import type { AdminDeviceSummary, DeviceApprovalEntry } from "@app/shared";
+import { ApiCallError } from "../api/client";
 import {
   decideAdminDevice,
   listAdminDevices,
   listDeviceApprovals,
   listUserDevicesForAdmin,
 } from "../api/endpoints";
-import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { useSSE } from "../hooks/useSSE";
-import { playNotificationSound } from "../hooks/useNotificationSound";
 import { PageHelp } from "../components/PageHelp";
+import { playNotificationSound } from "../hooks/useNotificationSound";
+import { useSSE } from "../hooks/useSSE";
 
 type DeviceTab = "pending" | "devices" | "history";
-type DeviceFilter = "all" | "pending" | "approved" | "rejected";
+type DeviceFilter = "all" | "pending" | "approved" | "rejected" | "blocked";
 
 function formatTimestamp(value: string | null): string {
   if (!value) return "Not recorded";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function DeviceStatusPill({ status }: { status: AdminDeviceSummary["status"] }) {
   const styles = {
-    pending: "bg-amber-500/10 text-amber-300 border-amber-500/20",
-    approved: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
-    rejected: "bg-rose-500/10 text-rose-300 border-rose-500/20",
+    pending: "border-amber-500/20 bg-amber-500/10 text-amber-200",
+    approved: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
+    rejected: "border-rose-500/20 bg-rose-500/10 text-rose-200",
+    blocked: "border-slate-500/20 bg-slate-500/10 text-slate-200",
   } as const;
+
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize ${styles[status]}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${status === "approved" ? "bg-emerald-400" : status === "rejected" ? "bg-rose-400" : "bg-amber-400"}`} />
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium capitalize ${styles[status]}`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          status === "approved"
+            ? "bg-emerald-400"
+            : status === "rejected"
+              ? "bg-rose-400"
+              : "bg-amber-400"
+        }`}
+      />
       {status}
     </span>
   );
@@ -52,16 +67,139 @@ function StatTile({
   label,
   value,
   hint,
+  icon: Icon,
 }: {
   label: string;
   value: number;
   hint: string;
+  icon: LucideIcon;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</div>
-      <div className="mt-2 text-2xl font-semibold tabular-nums text-white">{value}</div>
-      <div className="mt-1 text-xs text-zinc-500">{hint}</div>
+    <div className="app-card-dark p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">
+            {label}
+          </div>
+          <div className="mt-3 text-2xl font-semibold tabular-nums text-white">{value}</div>
+          <div className="mt-2 text-sm text-slate-500">{hint}</div>
+        </div>
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-slate-300">
+          <Icon className="h-4.5 w-4.5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeviceMethodCopy(device: Pick<AdminDeviceSummary, "certFingerprint">) {
+  if (device.certFingerprint) {
+    return `EAP-TLS · cert ${device.certFingerprint.slice(0, 12)}…`;
+  }
+
+  return "PEAP / password auth";
+}
+
+function ActionButtons({
+  device,
+  busy,
+  onInspect,
+  onDecision,
+  showInspect = true,
+}: {
+  device: AdminDeviceSummary;
+  busy: boolean;
+  onInspect: () => void;
+  onDecision: (status: "approved" | "rejected") => void;
+  showInspect?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {showInspect && (
+        <button
+          onClick={onInspect}
+          className="rounded-[18px] border border-white/8 px-3 py-2 text-xs font-medium text-slate-200 transition hover:bg-white/[0.06] hover:text-white"
+        >
+          Inspect
+        </button>
+      )}
+      {device.status !== "approved" && (
+        <button
+          onClick={() => onDecision("approved")}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-[18px] bg-emerald-500 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+          Approve
+        </button>
+      )}
+      {device.status !== "rejected" && (
+        <button
+          onClick={() => onDecision("rejected")}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-[18px] bg-rose-500 px-3 py-2 text-xs font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+          Reject
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DeviceCard({
+  device,
+  busy,
+  onInspect,
+  onDecision,
+}: {
+  device: AdminDeviceSummary;
+  busy: boolean;
+  onInspect: () => void;
+  onDecision: (status: "approved" | "rejected") => void;
+}) {
+  return (
+    <div className="app-card-dark p-5">
+      <div className="flex items-start gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-[20px] bg-sky-400/[0.12] text-sky-200">
+          <Smartphone className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onInspect}
+              className="text-left text-base font-semibold tracking-tight text-white transition hover:text-sky-200"
+            >
+              {device.label || "Unnamed device"}
+            </button>
+            <DeviceStatusPill status={device.status} />
+          </div>
+          <div className="mt-2 text-sm text-slate-400">
+            {device.username}
+            {device.fullName ? ` · ${device.fullName}` : ""}
+          </div>
+          <div className="mt-2 font-mono text-xs uppercase tracking-wide text-slate-500">
+            {device.mac}
+          </div>
+          <div className="mt-3 grid gap-2 text-sm text-slate-500 sm:grid-cols-2">
+            <div>Requested {formatTimestamp(device.learnedAt)}</div>
+            <div>Last seen {formatTimestamp(device.lastSeenAt)}</div>
+            <div>Learned {formatTimestamp(device.learnedAt)}</div>
+            <div>{DeviceMethodCopy(device)}</div>
+          </div>
+          <div className="mt-3 rounded-[20px] border border-white/6 bg-white/[0.03] px-4 py-3 text-sm text-slate-400">
+            {device.decisionNote || "No operator note yet."}
+          </div>
+          <div className="mt-4">
+            <ActionButtons
+              device={device}
+              busy={busy}
+              onInspect={onInspect}
+              onDecision={onDecision}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -87,9 +225,11 @@ export function LiveDeviceApprovalsView() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
+
     try {
       const currentDeviceStatus =
         tab === "pending" ? "pending" : filter === "all" ? undefined : filter;
+
       const [overviewResult, deviceResult, historyResult] = await Promise.all([
         listAdminDevices(token, { pageSize: 200 }),
         listAdminDevices(token, {
@@ -103,6 +243,7 @@ export function LiveDeviceApprovalsView() {
           search: tab === "history" && query ? query : undefined,
         }),
       ]);
+
       setOverview(overviewResult.items);
       setDevices(deviceResult.items);
       setHistory(historyResult.items);
@@ -110,7 +251,10 @@ export function LiveDeviceApprovalsView() {
     } catch (err) {
       setNotice({
         ok: false,
-        text: err instanceof ApiCallError ? err.payload.message : "Unable to load approval workspace",
+        text:
+          err instanceof ApiCallError
+            ? err.payload.message
+            : "Unable to load approval workspace",
       });
     } finally {
       setLoading(false);
@@ -121,25 +265,33 @@ export function LiveDeviceApprovalsView() {
     void load();
   }, [load]);
 
-  // Real-time refresh via SSE — auto-reload and play a ting on new events
   useSSE(token, {
-    "device.pending": () => { playNotificationSound(); void load(); },
-    "device.decided": () => { playNotificationSound(); void load(); },
+    "device.pending": () => {
+      playNotificationSound();
+      void load();
+    },
+    "device.decided": () => {
+      playNotificationSound();
+      void load();
+    },
   });
 
-  const counts = useMemo(() => {
-    return overview.reduce(
-      (acc, device) => {
-        acc.total += 1;
-        acc[device.status] += 1;
-        return acc;
-      },
-      { total: 0, pending: 0, approved: 0, rejected: 0 },
-    );
-  }, [overview]);
+  const counts = useMemo(
+    () =>
+      overview.reduce(
+        (acc, device) => {
+          acc.total += 1;
+          acc[device.status] += 1;
+          return acc;
+        },
+        { total: 0, pending: 0, approved: 0, rejected: 0, blocked: 0 },
+      ),
+    [overview],
+  );
 
   const inspectUser = async (device: AdminDeviceSummary) => {
     if (!token) return;
+
     try {
       const result = await listUserDevicesForAdmin(token, device.userId, { pageSize: 100 });
       setSelectedUser({
@@ -151,7 +303,10 @@ export function LiveDeviceApprovalsView() {
     } catch (err) {
       setNotice({
         ok: false,
-        text: err instanceof ApiCallError ? err.payload.message : "Unable to load the user's devices",
+        text:
+          err instanceof ApiCallError
+            ? err.payload.message
+            : "Unable to load the user's devices",
       });
     }
   };
@@ -159,6 +314,7 @@ export function LiveDeviceApprovalsView() {
   const refreshSelectedUser = useCallback(
     async (device: AdminDeviceSummary) => {
       if (!token || selectedUser?.id !== device.userId) return;
+
       const updated = await listUserDevicesForAdmin(token, device.userId, { pageSize: 100 });
       setSelectedUser({
         id: device.userId,
@@ -172,21 +328,28 @@ export function LiveDeviceApprovalsView() {
 
   const decide = async (device: AdminDeviceSummary, status: "approved" | "rejected") => {
     if (!token) return;
+
     setBusyId(device.id);
     setNotice(null);
+
     try {
       const result = await decideAdminDevice(token, device.id, { status });
-      const message =
-        result.disconnectedSessions > 0
-          ? `${device.mac} marked ${status}. Forced reauthentication for ${result.disconnectedSessions} active session(s).`
-          : `${device.mac} marked ${status}. No active session needed reauthentication.`;
-      setNotice({ ok: true, text: message });
+      setNotice({
+        ok: true,
+        text:
+          result.disconnectedSessions > 0
+            ? `${device.mac} marked ${status}. Forced reauthentication for ${result.disconnectedSessions} active session(s).`
+            : `${device.mac} marked ${status}. No active session needed reauthentication.`,
+      });
       await load();
       await refreshSelectedUser(device);
     } catch (err) {
       setNotice({
         ok: false,
-        text: err instanceof ApiCallError ? err.payload.message : `Unable to ${status} device`,
+        text:
+          err instanceof ApiCallError
+            ? err.payload.message
+            : `Unable to ${status} device`,
       });
     } finally {
       setBusyId(null);
@@ -196,51 +359,92 @@ export function LiveDeviceApprovalsView() {
   const visibleHistory =
     tab === "history" && query
       ? history.filter((entry) => {
-          const q = query.toLowerCase();
+          const normalizedQuery = query.toLowerCase();
+
           return (
-            entry.username.toLowerCase().includes(q) ||
-            entry.mac.toLowerCase().includes(q) ||
-            (entry.deviceLabel || "").toLowerCase().includes(q) ||
-            (entry.notes || "").toLowerCase().includes(q)
+            entry.username.toLowerCase().includes(normalizedQuery) ||
+            entry.mac.toLowerCase().includes(normalizedQuery) ||
+            (entry.deviceLabel || "").toLowerCase().includes(normalizedQuery) ||
+            (entry.notes || "").toLowerCase().includes(normalizedQuery)
           );
         })
       : history;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold text-white">Device approvals</h2>
-            <PageHelp title="Device Approvals" description="First-seen device workflow. When a device authenticates successfully for the first time, it enters Pending state awaiting admin review. Approve it to grant normal network access; Reject it to block future connections from that MAC address. Every decision is logged in the audit trail." tips={["Approval decisions are per device (MAC address), independent of the user account", "Approving a device with an active session triggers an immediate CoA Authorize-Only so the new policy takes effect without disconnecting the user", "The pending count badge in the sidebar and the bell icon update in real time via SSE"]} />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-semibold tracking-tight text-white lg:text-2xl">
+              Device approvals
+            </h2>
+            <PageHelp
+              title="Device Approvals"
+              description="First-seen device workflow. New devices enter Pending until an operator approves or rejects them. Decisions are written to the audit trail and can trigger live reauthentication when the device is already online."
+              tips={[
+                "Approval decisions are per device identity and MAC address, not just per user account",
+                "Approving a device with an active session triggers immediate policy refresh where supported",
+                "The queue updates in real time from server-sent events and Telegram-driven decisions",
+              ]}
+            />
           </div>
-          <p className="mt-0.5 text-sm text-zinc-500">Review first-seen devices, approve or reject them, and track every decision.</p>
+          <p className="mt-1 max-w-3xl text-sm text-slate-500">
+            Review first-seen devices, approve or reject them quickly, and keep a clean
+            decision history for every operator action.
+          </p>
         </div>
+
         <button
           onClick={load}
-          className="inline-flex items-center gap-2 rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-700"
+          className="inline-flex items-center justify-center gap-2 rounded-[20px] border border-white/8 bg-white/[0.04] px-4 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08] hover:text-white"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatTile label="Pending" value={counts.pending} hint="Needs an operator decision" />
-        <StatTile label="Approved" value={counts.approved} hint="Allowed onto the normal policy path" />
-        <StatTile label="Rejected" value={counts.rejected} hint="Blocked at the approval layer" />
-        <StatTile label="Known Devices" value={counts.total} hint="All device identities on record" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label="Pending"
+          value={counts.pending}
+          hint="Needs an operator decision"
+          icon={Clock3}
+        />
+        <StatTile
+          label="Approved"
+          value={counts.approved}
+          hint="Allowed onto the normal policy path"
+          icon={CheckCircle2}
+        />
+        <StatTile
+          label="Rejected"
+          value={counts.rejected}
+          hint="Blocked at the approval layer"
+          icon={XCircle}
+        />
+        <StatTile
+          label="Known devices"
+          value={counts.total}
+          hint="All device identities on record"
+          icon={ShieldCheck}
+        />
       </div>
 
       {notice && (
-        <div className={`rounded-lg border px-4 py-3 text-sm ${notice.ok ? "border-emerald-900 bg-emerald-950/20 text-emerald-300" : "border-rose-900 bg-rose-950/20 text-rose-300"}`}>
+        <div
+          className={`rounded-[24px] border px-4 py-4 text-sm ${
+            notice.ok
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+              : "border-rose-500/20 bg-rose-500/10 text-rose-200"
+          }`}
+        >
           {notice.text}
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-          <div className="flex items-center gap-1 rounded-lg bg-zinc-900 p-1">
+      <div className="app-card-dark overflow-hidden p-4">
+        <div className="flex flex-col gap-3 border-b border-white/6 pb-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="hide-scrollbar flex gap-2 overflow-x-auto rounded-[20px] bg-slate-950/55 p-1.5">
             {[
               { id: "pending", label: "Pending queue" },
               { id: "devices", label: "All devices" },
@@ -249,168 +453,203 @@ export function LiveDeviceApprovalsView() {
               <button
                 key={item.id}
                 onClick={() => setTab(item.id as DeviceTab)}
-                className={`rounded-md px-3 py-2 text-xs font-medium ${tab === item.id ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-zinc-100"}`}
+                className={`min-w-max rounded-[16px] px-3 py-2 text-xs font-medium transition ${
+                  tab === item.id
+                    ? "bg-sky-400 text-slate-950"
+                    : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                }`}
               >
                 {item.label}
               </button>
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1 sm:w-[18rem]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={tab === "history" ? "Search approvals..." : "Search user, MAC, or label..."}
-                className="w-72 rounded-lg border border-zinc-800 bg-zinc-950 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-600 focus:outline-none"
+                className="w-full rounded-[18px] border border-white/8 bg-slate-950/70 py-2.5 pl-9 pr-3 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/40"
               />
             </div>
             <select
               value={filter}
               onChange={(event) => setFilter(event.target.value as DeviceFilter)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-600 focus:outline-none"
+              className="rounded-[18px] border border-white/8 bg-slate-950/70 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-sky-400/40"
             >
               <option value="all">All statuses</option>
               <option value="pending">Pending</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
+              <option value="blocked">Blocked</option>
             </select>
           </div>
         </div>
 
         {(tab === "pending" || tab === "devices") && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-900/60 text-left text-[11px] uppercase tracking-wider text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">User / device</th>
-                  <th className="px-4 py-3 font-medium">MAC</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Request timeline</th>
-                  <th className="px-4 py-3 font-medium">Notes</th>
-                  <th className="px-4 py-3 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/60">
-                {devices.map((device) => (
-                  <tr key={device.id} className="hover:bg-zinc-900/50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-lg bg-indigo-500/10 p-2 text-indigo-300">
-                          <Smartphone className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <button
-                            onClick={() => inspectUser(device)}
-                            className="text-left font-medium text-zinc-100 hover:text-indigo-300"
-                          >
-                            {device.label || "Unnamed device"}
-                          </button>
-                          <div className="mt-1 text-xs text-zinc-500">
-                            {device.username}
-                            {device.fullName ? ` - ${device.fullName}` : ""}
-                          </div>
-                          <div className="mt-1 text-xs text-zinc-500">
-                            Learned {formatTimestamp(device.learnedAt)}
-                          </div>
-                          <div className="mt-1 text-xs text-zinc-500">
-                            {device.certFingerprint
-                              ? `EAP-TLS · cert ${device.certFingerprint.slice(0, 12)}…`
-                              : "PEAP / password auth"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-zinc-400">{device.mac}</td>
-                    <td className="px-4 py-3">
-                      <DeviceStatusPill status={device.status} />
-                    </td>
-                    <td className="px-4 py-3 text-xs text-zinc-400">
-                      <div>Requested {formatTimestamp(device.requestedAt)}</div>
-                      <div className="mt-1">Last seen {formatTimestamp(device.lastSeenAt)}</div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">
-                      {device.decisionNotes || "No operator note yet"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => inspectUser(device)}
-                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
-                        >
-                          Inspect
-                        </button>
-                        {device.status !== "approved" && (
-                          <button
-                            onClick={() => void decide(device, "approved")}
-                            disabled={busyId === device.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
-                          >
-                            {busyId === device.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                            Approve
-                          </button>
-                        )}
-                        {device.status !== "rejected" && (
-                          <button
-                            onClick={() => void decide(device, "rejected")}
-                            disabled={busyId === device.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-60"
-                          >
-                            {busyId === device.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-                            Reject
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!loading && devices.length === 0 && (
+          <>
+            <div className="mt-4 space-y-4 lg:hidden">
+              {devices.map((device) => (
+                <DeviceCard
+                  key={device.id}
+                  device={device}
+                  busy={busyId === device.id}
+                  onInspect={() => void inspectUser(device)}
+                  onDecision={(status) => void decide(device, status)}
+                />
+              ))}
+              {!loading && devices.length === 0 && (
+                <div className="rounded-[24px] border border-dashed border-white/8 bg-white/[0.03] px-4 py-10 text-center text-sm text-slate-500">
+                  No devices match the current filters.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[960px] text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-[0.24em] text-slate-500">
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-zinc-500">
-                      No devices match the current filters.
-                    </td>
+                    <th className="px-4 py-3 font-medium">User / device</th>
+                    <th className="px-4 py-3 font-medium">MAC</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Request timeline</th>
+                    <th className="px-4 py-3 font-medium">Notes</th>
+                    <th className="px-4 py-3 text-right font-medium">Action</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-white/6">
+                  {devices.map((device) => (
+                    <tr key={device.id} className="align-top transition hover:bg-white/[0.03]">
+                      <td className="px-4 py-4">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-400/[0.12] text-sky-200">
+                            <Smartphone className="h-4.5 w-4.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <button
+                              onClick={() => void inspectUser(device)}
+                              className="text-left font-semibold text-white transition hover:text-sky-200"
+                            >
+                              {device.label || "Unnamed device"}
+                            </button>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {device.username}
+                              {device.fullName ? ` · ${device.fullName}` : ""}
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
+                              Learned {formatTimestamp(device.learnedAt)}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {DeviceMethodCopy(device)}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 font-mono text-xs uppercase tracking-wide text-slate-400">
+                        {device.mac}
+                      </td>
+                      <td className="px-4 py-4">
+                        <DeviceStatusPill status={device.status} />
+                      </td>
+                      <td className="px-4 py-4 text-xs text-slate-400">
+                        <div>Requested {formatTimestamp(device.learnedAt)}</div>
+                        <div className="mt-2">Last seen {formatTimestamp(device.lastSeenAt)}</div>
+                      </td>
+                      <td className="px-4 py-4 text-xs leading-6 text-slate-500">
+                        {device.decisionNote || "No operator note yet"}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex justify-end">
+                          <ActionButtons
+                            device={device}
+                            busy={busyId === device.id}
+                            onInspect={() => void inspectUser(device)}
+                            onDecision={(status) => void decide(device, status)}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!loading && devices.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                        No devices match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {tab === "history" && (
-          <div className="divide-y divide-zinc-800/60">
+          <div className="mt-4 space-y-3">
             {visibleHistory.map((entry) => (
-              <div key={entry.id} className="flex items-start gap-4 px-5 py-4">
-                <div className={`rounded-lg p-2 ${entry.status === "approved" ? "bg-emerald-500/10 text-emerald-300" : entry.status === "rejected" ? "bg-rose-500/10 text-rose-300" : "bg-amber-500/10 text-amber-300"}`}>
-                  {entry.status === "approved" ? <ShieldCheck className="h-4 w-4" /> : entry.status === "rejected" ? <XCircle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium text-zinc-100">{entry.username}</span>
-                    {entry.fullName && <span className="text-zinc-500">{entry.fullName}</span>}
-                    <DeviceStatusPill status={entry.status} />
+              <div
+                key={entry.id}
+                className="rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-4"
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl ${
+                      entry.status === "approved"
+                        ? "bg-emerald-500/12 text-emerald-200"
+                        : entry.status === "rejected"
+                          ? "bg-rose-500/12 text-rose-200"
+                          : "bg-amber-500/12 text-amber-200"
+                    }`}
+                  >
+                    {entry.status === "approved" ? (
+                      <ShieldCheck className="h-4.5 w-4.5" />
+                    ) : entry.status === "rejected" ? (
+                      <XCircle className="h-4.5 w-4.5" />
+                    ) : (
+                      <Clock3 className="h-4.5 w-4.5" />
+                    )}
                   </div>
-                  <div className="mt-1 text-xs text-zinc-500">
-                    {entry.deviceLabel || "Unnamed device"} - <span className="font-mono">{entry.mac}</span>
-                  </div>
-                  <div className="mt-2 text-xs text-zinc-400">
-                    Requested {formatTimestamp(entry.requestedAt)}{entry.decidedAt ? ` - Decided ${formatTimestamp(entry.decidedAt)}` : ""}
-                  </div>
-                  <div className="mt-1 text-xs text-zinc-500">
-                    {entry.decidedBy ? `By ${entry.decidedBy}` : "By system / Telegram"}{entry.notes ? ` - ${entry.notes}` : ""}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-white">{entry.username}</span>
+                      {entry.fullName && <span className="text-sm text-slate-500">{entry.fullName}</span>}
+                      <DeviceStatusPill status={entry.status} />
+                    </div>
+                    <div className="mt-2 text-sm text-slate-400">
+                      {entry.deviceLabel || "Unnamed device"} ·{" "}
+                      <span className="font-mono text-xs uppercase tracking-wide text-slate-500">
+                        {entry.mac}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-sm text-slate-500 sm:grid-cols-2">
+                      <div>Requested {formatTimestamp(entry.requestedAt)}</div>
+                      <div>
+                        {entry.decidedAt
+                          ? `Decided ${formatTimestamp(entry.decidedAt)}`
+                          : "Decision time not recorded"}
+                      </div>
+                    </div>
+                    <div className="mt-3 text-sm text-slate-500">
+                      {entry.decidedBy ? `By ${entry.decidedBy}` : "By system / Telegram"}
+                      {entry.notes ? ` · ${entry.notes}` : ""}
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
             {!loading && visibleHistory.length === 0 && (
-              <div className="px-4 py-10 text-center text-sm text-zinc-500">No approval history matches the current filters.</div>
+              <div className="rounded-[24px] border border-dashed border-white/8 bg-white/[0.03] px-4 py-10 text-center text-sm text-slate-500">
+                No approval history matches the current filters.
+              </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3 text-xs text-zinc-500">
-        Approval decisions force a live reauthentication attempt when the device is already online, so policy changes take effect without waiting for the user to reconnect.
+      <div className="rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-4 text-sm text-slate-500">
+        Approval decisions force a live reauthentication attempt when the device is already
+        online, so policy changes can apply without waiting for the user to reconnect.
       </div>
 
       {selectedUser && (
@@ -442,63 +681,67 @@ function UserDevicesModal({
   busyId: string | null;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="surface-dark-strong w-full rounded-t-[32px] border-x-0 border-b-0 px-4 pb-5 pt-4 sm:max-w-4xl sm:rounded-[32px] sm:border sm:px-5 safe-bottom">
+        <div className="flex items-center justify-between border-b border-white/6 pb-4">
           <div>
-            <h3 className="text-base font-semibold text-zinc-100">{user.fullName || user.username}</h3>
-            <p className="mt-0.5 text-xs text-zinc-500">{user.username} - device inventory and approval state</p>
+            <div className="text-lg font-semibold tracking-tight text-white">
+              {user.fullName || user.username}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              {user.username} · device inventory and approval state
+            </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
-            <XCircle className="h-4 w-4" />
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
+          >
+            <X className="h-4.5 w-4.5" />
           </button>
         </div>
-        <div className="divide-y divide-zinc-800/60">
+
+        <div className="mt-4 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
           {user.devices.map((device) => (
-            <div key={device.id} className="flex items-center gap-4 px-5 py-4">
-              <div className="rounded-lg bg-zinc-800 p-2 text-zinc-300">
-                <UserRound className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-zinc-100">{device.label || "Unnamed device"}</span>
-                  <DeviceStatusPill status={device.status} />
+            <div
+              key={device.id}
+              className="rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-4"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-slate-300">
+                  <UserRound className="h-4.5 w-4.5" />
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">
-                  <span className="font-mono">{device.mac}</span>
-                  <span className="mx-2 text-zinc-700">-</span>
-                  Last seen {formatTimestamp(device.lastSeenAt)}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-white">
+                      {device.label || "Unnamed device"}
+                    </span>
+                    <DeviceStatusPill status={device.status} />
+                  </div>
+                  <div className="mt-2 font-mono text-xs uppercase tracking-wide text-slate-500">
+                    {device.mac}
+                  </div>
+                  <div className="mt-2 text-sm text-slate-500">
+                    Last seen {formatTimestamp(device.lastSeenAt)}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">{DeviceMethodCopy(device)}</div>
+                  <div className="mt-4">
+                    <ActionButtons
+                      device={device}
+                      busy={busyId === device.id}
+                      onInspect={() => undefined}
+                      onDecision={(status) => void onDecision(device, status)}
+                      showInspect={false}
+                    />
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">
-                  {device.certFingerprint
-                    ? `EAP-TLS · cert ${device.certFingerprint.slice(0, 16)}…`
-                    : "PEAP / password auth"}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {device.status !== "approved" && (
-                  <button
-                    onClick={() => void onDecision(device, "approved")}
-                    disabled={busyId === device.id}
-                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
-                  >
-                    Approve
-                  </button>
-                )}
-                {device.status !== "rejected" && (
-                  <button
-                    onClick={() => void onDecision(device, "rejected")}
-                    disabled={busyId === device.id}
-                    className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-60"
-                  >
-                    Reject
-                  </button>
-                )}
               </div>
             </div>
           ))}
+
           {user.devices.length === 0 && (
-            <div className="px-5 py-8 text-center text-sm text-zinc-500">No devices recorded for this user yet.</div>
+            <div className="rounded-[24px] border border-dashed border-white/8 bg-white/[0.03] px-4 py-10 text-center text-sm text-slate-500">
+              No devices recorded for this user yet.
+            </div>
           )}
         </div>
       </div>
