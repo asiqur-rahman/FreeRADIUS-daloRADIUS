@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { PwaInstallButton } from "../components/PwaInstallButton";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useTheme } from "../theme/ThemeContext";
 import { LiveConnectionGuideView } from "../views/LiveConnectionGuideView";
@@ -190,6 +191,7 @@ export default function ClientPortal() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <PwaInstallButton compact />
                 <ThemeToggle compact />
                 <button className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white/85 text-slate-500 transition hover:bg-white hover:text-slate-950">
                   <Bell className="h-4.5 w-4.5" />
@@ -236,6 +238,7 @@ export default function ClientPortal() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <PwaInstallButton />
                 <ThemeToggle />
                 <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-950">
                   <Bell className="h-4.5 w-4.5" />
@@ -497,6 +500,7 @@ export default function ClientPortal() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <PwaInstallButton compact />
                   <ThemeToggle compact />
                   <button
                     onClick={() => setMobileMenuOpen(false)}

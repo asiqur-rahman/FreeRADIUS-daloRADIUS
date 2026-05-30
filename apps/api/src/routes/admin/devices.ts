@@ -13,6 +13,7 @@ import type {
   Paginated,
 } from "@app/shared";
 import { prisma } from "../../db.js";
+import { audit } from "../../lib/audit.js";
 import { NotFound } from "../../lib/errors.js";
 import { decideDevice } from "../../services/deviceApprovals.js";
 import {
@@ -175,6 +176,29 @@ const adminDevices: FastifyPluginAsync = async (app) => {
       pageSize: query.pageSize,
     };
     return body;
+  });
+
+  // DELETE /admin/devices/:id — permanently delete a device record
+  app.delete<{ Params: { id: string } }>("/devices/:id", async (req) => {
+    const actorId = req.currentUser!.sub;
+    const device = await prisma.userDevice.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { id: true, username: true } } },
+    });
+    if (!device) throw NotFound("Device not found");
+
+    await prisma.userDevice.delete({ where: { id: device.id } });
+
+    await audit({
+      actorId,
+      action:     "device_reject",  // closest existing audit action
+      targetType: "device",
+      targetId:   device.id,
+      metadata:   { mac: device.mac, username: device.user.username, action: "deleted" },
+      req,
+    });
+
+    return { ok: true };
   });
 
   // PATCH /admin/devices/:id — accept / reject / block

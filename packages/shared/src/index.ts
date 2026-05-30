@@ -22,6 +22,7 @@ export interface UserSummary {
   validFrom: string | null;
   validUntil: string | null;
   mfaEnabled: boolean;
+  certEnabled: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   groups: Array<{ id: string; name: string }>;
@@ -60,6 +61,7 @@ export interface CreateUserRequest {
   password: string;
   role?: UserRole;
   status?: "active" | "pending";
+  certEnabled?: boolean;
   groupIds?: string[];
   validFrom?: string | null;
   validUntil?: string | null;
@@ -71,6 +73,7 @@ export interface UpdateUserRequest {
   fullName?: string | null;
   status?: UserStatus;
   role?: UserRole;
+  certEnabled?: boolean;
   validFrom?: string | null;
   validUntil?: string | null;
   groupIds?: string[];

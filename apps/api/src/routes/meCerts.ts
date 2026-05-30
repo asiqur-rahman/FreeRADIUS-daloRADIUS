@@ -71,9 +71,10 @@ const meCerts: FastifyPluginAsync = async (app) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, username: true, email: true },
+      select: { id: true, username: true, email: true, certEnabled: true },
     });
     if (!user) throw NotFound("User not found");
+    if (!user.certEnabled) throw Forbidden("Certificate access is disabled for your account. Contact your administrator.");
 
     const bundle = await issueUserCert({
       username: user.username,

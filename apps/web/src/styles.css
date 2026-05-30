@@ -343,10 +343,10 @@ textarea {
   .app-card-dark,
   .surface-dark,
   .surface-dark-strong,
+  [class*="bg-zinc-800"],
   [class*="bg-zinc-900"],
   [class*="bg-zinc-950"],
-  [class*="bg-slate-950"],
-  [class*="bg-stone-900"],
+  [class*="bg-slate-950/"],
   [class*="bg-[#07111c]"]
 ) :is(.text-white, .text-slate-100, .text-slate-200, .text-zinc-100, .text-zinc-200) {
   color: #0f172a !important;
@@ -356,10 +356,10 @@ textarea {
   .app-card-dark,
   .surface-dark,
   .surface-dark-strong,
+  [class*="bg-zinc-800"],
   [class*="bg-zinc-900"],
   [class*="bg-zinc-950"],
-  [class*="bg-slate-950"],
-  [class*="bg-stone-900"],
+  [class*="bg-slate-950/"],
   [class*="bg-[#07111c]"]
 ) :is(.text-slate-300, .text-slate-400, .text-zinc-300, .text-zinc-400) {
   color: #334155 !important;
@@ -369,19 +369,68 @@ textarea {
   .app-card-dark,
   .surface-dark,
   .surface-dark-strong,
+  [class*="bg-zinc-800"],
   [class*="bg-zinc-900"],
   [class*="bg-zinc-950"],
-  [class*="bg-slate-950"],
-  [class*="bg-stone-900"],
+  [class*="bg-slate-950/"],
   [class*="bg-[#07111c]"]
 ) :is(.text-slate-500, .text-slate-600, .text-zinc-500, .text-zinc-600) {
   color: #64748b !important;
 }
 
+:root[data-theme="white"] :is(
+  [class*="bg-zinc-800"],
+  [class*="bg-zinc-900"],
+  [class*="bg-zinc-950"],
+  [class*="bg-slate-950/"],
+  [class*="bg-white/[0.02]"],
+  [class*="bg-white/[0.03]"],
+  [class*="bg-white/[0.04]"],
+  [class*="bg-white/[0.05]"]
+):is(.text-white, .text-slate-100, .text-slate-200, .text-zinc-100, .text-zinc-200) {
+  color: #0f172a !important;
+}
+
+:root[data-theme="white"] :is(
+  [class*="bg-zinc-800"],
+  [class*="bg-zinc-900"],
+  [class*="bg-zinc-950"],
+  [class*="bg-slate-950/"],
+  [class*="bg-white/[0.02]"],
+  [class*="bg-white/[0.03]"],
+  [class*="bg-white/[0.04]"],
+  [class*="bg-white/[0.05]"]
+):is(.text-slate-300, .text-slate-400, .text-zinc-300, .text-zinc-400) {
+  color: #334155 !important;
+}
+
+:root[data-theme="white"] :is(
+  [class*="bg-zinc-800"],
+  [class*="bg-zinc-900"],
+  [class*="bg-zinc-950"],
+  [class*="bg-slate-950/"],
+  [class*="bg-white/[0.02]"],
+  [class*="bg-white/[0.03]"],
+  [class*="bg-white/[0.04]"],
+  [class*="bg-white/[0.05]"]
+):is(.text-slate-500, .text-slate-600, .text-zinc-500, .text-zinc-600),
+:root[data-theme="white"] :is(
+  [class*="bg-zinc-800"],
+  [class*="bg-zinc-900"],
+  [class*="bg-zinc-950"],
+  [class*="bg-slate-950/"],
+  [class*="bg-white/[0.02]"],
+  [class*="bg-white/[0.03]"],
+  [class*="bg-white/[0.04]"],
+  [class*="bg-white/[0.05]"]
+)[class*="text-white/"] {
+  color: #64748b !important;
+}
+
+:root[data-theme="white"] [class*="bg-zinc-800"],
 :root[data-theme="white"] [class*="bg-zinc-950"],
 :root[data-theme="white"] [class*="bg-zinc-900"],
-:root[data-theme="white"] [class*="bg-slate-950"],
-:root[data-theme="white"] [class*="bg-stone-900"],
+:root[data-theme="white"] [class*="bg-slate-950/"],
 :root[data-theme="white"] [class*="bg-white/[0.02]"],
 :root[data-theme="white"] [class*="bg-white/[0.03]"],
 :root[data-theme="white"] [class*="bg-white/[0.04]"],
@@ -389,6 +438,7 @@ textarea {
   background: rgba(248, 250, 252, 0.92) !important;
 }
 
+:root[data-theme="white"] [class*="border-zinc-6"],
 :root[data-theme="white"] [class*="border-zinc-7"],
 :root[data-theme="white"] [class*="border-zinc-8"],
 :root[data-theme="white"] [class*="border-white/"] {

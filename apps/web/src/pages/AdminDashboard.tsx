@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { listAdminDevices } from "../api/endpoints";
 import { useAuth } from "../auth/AuthContext";
+import { PwaInstallButton } from "../components/PwaInstallButton";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { playNotificationSound } from "../hooks/useNotificationSound";
 import { useSSE } from "../hooks/useSSE";
@@ -227,9 +228,6 @@ export default function AdminDashboard() {
   const mobileChromeClass = isWhiteTheme
     ? "border-slate-200/80 bg-white/84"
     : "border-white/8 bg-[#07111c]/82";
-  const mobileSummaryClass = isWhiteTheme
-    ? "border-slate-200 bg-white/90 shadow-[0_18px_45px_rgba(148,163,184,0.16)]"
-    : "border-white/8 bg-[#07111c]/88 shadow-[0_18px_45px_rgba(2,6,23,0.28)]";
   const mobileNavPanelClass = isWhiteTheme
     ? "theme-surface-strong text-slate-900"
     : "surface-dark-strong text-slate-100";
@@ -260,7 +258,10 @@ export default function AdminDashboard() {
                   </h1>
                 </div>
               </div>
-              <ThemeToggle compact />
+              <div className="flex items-center gap-2">
+                <PwaInstallButton compact />
+                <ThemeToggle compact />
+              </div>
             </div>
 
             <div className={`mt-5 rounded-[26px] border p-4 ${softCardClass}`}>
@@ -362,6 +363,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <PwaInstallButton compact />
                 <ThemeToggle compact />
                 <button
                   onClick={() => navigate("devices")}
@@ -405,6 +407,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <PwaInstallButton />
                 <ThemeToggle />
                 <button
                   onClick={() => navigate("devices")}
@@ -430,27 +433,7 @@ export default function AdminDashboard() {
 
           </header>
 
-          <main className="page-enter min-w-0 flex-1 px-4 pb-app-nav pt-4 lg:px-0 lg:pb-0 lg:pt-6">
-            <section className="mb-4 lg:hidden">
-              <div className={`rounded-[28px] border px-4 py-4 ${mobileSummaryClass}`}>
-                <div className={`flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.24em] ${faintClass}`}>
-                  <span>Admin</span>
-                  <span className={`h-1 w-1 rounded-full ${isWhiteTheme ? "bg-slate-300" : "bg-slate-600"}`} />
-                  <span>{operatorName}</span>
-                </div>
-                <div className="mt-3 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className={`text-[1.85rem] font-semibold leading-none tracking-tight ${titleClass}`}>
-                      {activeItem.label}
-                    </h2>
-                    <p className={`mt-2 max-w-[18rem] text-sm leading-6 ${copyClass}`}>
-                      {activeItem.description}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
+          <main className="page-enter min-w-0 flex-1 px-4 pb-app-nav pt-3 lg:px-0 lg:pb-0 lg:pt-6">
             {viewComponent(view)}
           </main>
         </div>
@@ -518,6 +501,7 @@ export default function AdminDashboard() {
                   <div className={`mt-1 text-lg font-semibold ${titleClass}`}>{operatorName}</div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <PwaInstallButton compact />
                   <ThemeToggle compact />
                   <button
                     onClick={() => setMobileMenuOpen(false)}

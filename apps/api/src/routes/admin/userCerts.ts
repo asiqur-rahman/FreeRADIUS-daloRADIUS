@@ -18,7 +18,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../db.js";
 import { audit } from "../../lib/audit.js";
-import { NotFound } from "../../lib/errors.js";
+import { Forbidden, NotFound } from "../../lib/errors.js";
 import { issueUserCert } from "../../lib/userCertIssuance.js";
 import { encrypt, decrypt } from "../../lib/encrypt.js";
 
@@ -68,6 +68,7 @@ const adminUserCerts: FastifyPluginAsync = async (app) => {
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw NotFound("User not found");
+    if (!user.certEnabled) throw Forbidden("Certificate access is disabled for this user.");
 
     const bundle = await issueUserCert({
       username: user.username,

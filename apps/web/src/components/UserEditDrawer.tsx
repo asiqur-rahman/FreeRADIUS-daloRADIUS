@@ -130,7 +130,9 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
   const [status, setStatus] = useState<UserStatus>(user.status);
   const [validFrom, setValidFrom] = useState(toLocal(user.validFrom));
   const [validUntil, setValidUntil] = useState(toLocal(user.validUntil));
-  const [groupIds, setGroupIds] = useState<string[]>(user.groups.map((group) => group.id));
+  // Single-group: a user belongs to at most one group at a time
+  const [groupId,     setGroupId]     = useState<string>(user.groups[0]?.id ?? "");
+  const [certEnabled, setCertEnabled] = useState<boolean>(user.certEnabled);
 
   const [newPwd, setNewPwd] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -178,11 +180,7 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
     };
   }, []);
 
-  const toggleGroup = (id: string) => {
-    setGroupIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
-    );
-  };
+  const selectGroup = (id: string) => setGroupId(id);
 
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -242,7 +240,8 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
         fullName: fullName.trim() || null,
         role,
         status,
-        groupIds,
+        certEnabled,
+        groupIds: groupId ? [groupId] : [],
         validFrom: validFrom ? new Date(validFrom).toISOString() : null,
         validUntil: validUntil ? new Date(validUntil).toISOString() : null,
       };
@@ -409,6 +408,29 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
               </div>
             </Section>
 
+            {/* ── Extra Config ── */}
+            <Section eyebrow="Extra config" title="Feature access" light={isWhiteTheme}>
+              <label className={`flex cursor-pointer items-center justify-between gap-4 rounded-[22px] border px-4 py-3.5 transition ${
+                isWhiteTheme ? "border-slate-200 bg-white/80 hover:bg-white" : "border-white/6 bg-white/[0.03] hover:bg-white/[0.05]"
+              }`}>
+                <div className="min-w-0">
+                  <div className={`text-sm font-medium ${isWhiteTheme ? "text-slate-900" : "text-white"}`}>
+                    WiFi Certificate Access
+                  </div>
+                  <div className={`mt-0.5 text-xs ${isWhiteTheme ? "text-slate-500" : "text-slate-400"}`}>
+                    {certEnabled
+                      ? "User can generate and use EAP-TLS WiFi certificates"
+                      : "Certificate generation is disabled — user must use password auth"}
+                  </div>
+                </div>
+                <button type="button" role="switch" aria-checked={certEnabled}
+                  onClick={() => setCertEnabled((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none ${certEnabled ? "bg-sky-400" : isWhiteTheme ? "bg-slate-200" : "bg-white/10"}`}>
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${certEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </label>
+            </Section>
+
             <Section eyebrow="Groups" title="Policy" light={isWhiteTheme}>
               {groups.length === 0 ? (
                 <div className={`rounded-[22px] border border-dashed px-4 py-5 text-sm ${isWhiteTheme ? "border-slate-200 bg-white/80 text-slate-500" : "border-white/8 bg-white/[0.03] text-slate-500"}`}>
@@ -416,26 +438,35 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {/* No group option */}
+                  <label className={`flex cursor-pointer items-center gap-3 rounded-[22px] border px-4 py-3 transition ${
+                    !groupId
+                      ? "border-sky-400/20 bg-sky-400/[0.08]"
+                      : isWhiteTheme
+                        ? "border-slate-200 bg-white/80 hover:bg-white"
+                        : "border-white/6 bg-white/[0.03] hover:bg-white/[0.05]"
+                  }`}>
+                    <input type="radio" name={`group-${user.id}`} checked={!groupId}
+                      onChange={() => selectGroup("")}
+                      className="h-4 w-4 shrink-0 accent-sky-400" />
+                    <span className={`text-sm font-medium ${isWhiteTheme ? "text-slate-500" : "text-slate-400"}`}>No group</span>
+                  </label>
                   {groups.map((group) => (
-                    <label
-                      key={group.id}
-                      className={`flex cursor-pointer items-start gap-3 rounded-[22px] border px-4 py-3 transition ${
-                        groupIds.includes(group.id)
+                    <label key={group.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-[22px] border px-4 py-3 transition ${
+                        groupId === group.id
                           ? "border-sky-400/20 bg-sky-400/[0.08]"
                           : isWhiteTheme
                             ? "border-slate-200 bg-white/80 hover:bg-white"
                             : "border-white/6 bg-white/[0.03] hover:bg-white/[0.05]"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={groupIds.includes(group.id)}
-                        onChange={() => toggleGroup(group.id)}
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-sky-400"
-                      />
+                      }`}>
+                      <input type="radio" name={`group-${user.id}`}
+                        checked={groupId === group.id}
+                        onChange={() => selectGroup(group.id)}
+                        className="h-4 w-4 shrink-0 accent-sky-400" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <div className={`text-sm font-medium ${titleClass}`}>{group.name}</div>
+                          <span className={`text-sm font-medium ${isWhiteTheme ? "text-slate-900" : "text-white"}`}>{group.name}</span>
                           {group.isDefault && (
                             <span className="rounded-full border border-sky-400/20 bg-sky-400/[0.08] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-sky-200">
                               Default
@@ -443,7 +474,7 @@ export function UserEditDrawer({ user, groups, token, onClose, onSaved }: Props)
                           )}
                         </div>
                         {group.description && (
-                          <div className={`mt-1 text-xs ${copyClass}`}>{group.description}</div>
+                          <div className={`mt-0.5 text-xs ${isWhiteTheme ? "text-slate-500" : "text-slate-400"}`}>{group.description}</div>
                         )}
                       </div>
                     </label>

@@ -179,6 +179,9 @@ export function listUserDevicesForAdmin(token: string, userId: string, q?: { sta
   const qs = params.toString();
   return api<Paginated<AdminDeviceSummary>>(`${v1}/admin/users/${userId}/devices${qs ? `?${qs}` : ""}`, { token });
 }
+export function deleteAdminDevice(token: string, id: string) {
+  return api<{ ok: true }>(`${v1}/admin/devices/${id}`, { method: "DELETE", token });
+}
 export function decideAdminDevice(token: string, id: string, body: DeviceDecisionRequest) {
   return api<{
     ok: true;

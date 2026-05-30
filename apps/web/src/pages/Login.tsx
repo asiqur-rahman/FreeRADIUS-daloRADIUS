@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck, User } from "lucide-react";
 import { ApiCallError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PwaInstallButton } from "../components/PwaInstallButton";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useTheme } from "../theme/ThemeContext";
 
@@ -70,7 +71,10 @@ export function Login() {
                   </div>
                 </div>
 
-                <ThemeToggle />
+                <div className="flex items-center gap-2">
+                  <PwaInstallButton />
+                  <ThemeToggle />
+                </div>
               </div>
 
               <div className="mt-10 max-w-xl">
@@ -115,10 +119,14 @@ export function Login() {
                   </div>
                 </div>
               </div>
-              <ThemeToggle compact />
+              <div className="flex items-center gap-2">
+                <PwaInstallButton compact />
+                <ThemeToggle compact />
+              </div>
             </div>
 
-            <div className="mb-7 hidden justify-end lg:flex">
+            <div className="mb-7 hidden justify-end gap-2 lg:flex">
+              <PwaInstallButton />
               <ThemeToggle />
             </div>
 

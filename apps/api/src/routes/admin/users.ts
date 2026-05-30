@@ -28,26 +28,28 @@ const usernameSchema = z
 const passwordSchema = z.string().min(10).max(256);
 
 const CreateUserBody = z.object({
-  username: usernameSchema,
-  email: z.string().email().max(254),
-  fullName: z.string().max(120).optional(),
-  password: passwordSchema,
-  role: z.enum(["admin", "user"]).optional(),
-  status: z.enum(["pending", "active"]).optional(),
-  groupIds: z.array(z.string()).optional(),
-  validFrom: z.string().datetime().nullable().optional(),
-  validUntil: z.string().datetime().nullable().optional(),
+  username:    usernameSchema,
+  email:       z.string().email().max(254),
+  fullName:    z.string().max(120).optional(),
+  password:    passwordSchema,
+  role:        z.enum(["admin", "user"]).optional(),
+  status:      z.enum(["pending", "active"]).optional(),
+  certEnabled: z.boolean().optional(),
+  groupIds:    z.array(z.string()).max(1, "A user can belong to at most one group").optional(),
+  validFrom:   z.string().datetime().nullable().optional(),
+  validUntil:  z.string().datetime().nullable().optional(),
 });
 
 const UpdateUserBody = z.object({
-  username: usernameSchema.optional(),
-  email: z.string().email().max(254).optional(),
-  fullName: z.string().max(120).nullable().optional(),
-  role: z.enum(["admin", "user"]).optional(),
-  status: z.enum(["pending", "active", "suspended", "expired"]).optional(),
-  validFrom: z.string().datetime().nullable().optional(),
-  validUntil: z.string().datetime().nullable().optional(),
-  groupIds: z.array(z.string()).optional(),
+  username:    usernameSchema.optional(),
+  email:       z.string().email().max(254).optional(),
+  fullName:    z.string().max(120).nullable().optional(),
+  role:        z.enum(["admin", "user"]).optional(),
+  status:      z.enum(["pending", "active", "suspended", "expired"]).optional(),
+  certEnabled: z.boolean().optional(),
+  validFrom:   z.string().datetime().nullable().optional(),
+  validUntil:  z.string().datetime().nullable().optional(),
+  groupIds:    z.array(z.string()).max(1, "A user can belong to at most one group").optional(),
   newPassword: z.string().min(10).max(256).optional(),
 });
 
@@ -83,7 +85,8 @@ function toSummary(u: UserWithGroups): UserSummary {
     status: u.status,
     validFrom: u.validFrom?.toISOString() ?? null,
     validUntil: u.validUntil?.toISOString() ?? null,
-    mfaEnabled: u.mfaEnabled,
+    mfaEnabled:  u.mfaEnabled,
+    certEnabled: u.certEnabled,
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
     createdAt: u.createdAt.toISOString(),
     groups: u.groups.map((g) => ({ id: g.group.id, name: g.group.name })),
@@ -154,10 +157,11 @@ const adminUsers: FastifyPluginAsync = async (app) => {
           username: body.username.toLowerCase(),
           email: body.email.toLowerCase(),
           fullName: body.fullName,
-          role: body.role ?? "user",
-          status: body.status ?? "active",
-          validFrom: body.validFrom ? new Date(body.validFrom) : null,
-          validUntil: body.validUntil ? new Date(body.validUntil) : null,
+          role:        body.role ?? "user",
+          status:      body.status ?? "active",
+          certEnabled: body.certEnabled ?? true,
+          validFrom:   body.validFrom  ? new Date(body.validFrom)  : null,
+          validUntil:  body.validUntil ? new Date(body.validUntil) : null,
           secret: {
             create: { passwordHashArgon2id, ntHash: nthash, mustChangePassword: true },
           },
@@ -195,13 +199,13 @@ const adminUsers: FastifyPluginAsync = async (app) => {
       if (!existing) throw NotFound("User not found");
 
       const data: Prisma.UserUpdateInput = {
-        email: body.email?.toLowerCase(),
-        fullName: body.fullName,
-        role: body.role,
-        status: body.status,
-        validFrom: body.validFrom === undefined ? undefined : body.validFrom ? new Date(body.validFrom) : null,
-        validUntil:
-          body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
+        email:       body.email?.toLowerCase(),
+        fullName:    body.fullName,
+        role:        body.role,
+        status:      body.status,
+        certEnabled: body.certEnabled,
+        validFrom:   body.validFrom  === undefined ? undefined : body.validFrom  ? new Date(body.validFrom)  : null,
+        validUntil:  body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
       };
 
       // Username rename: purge old RADIUS rows before saving new username

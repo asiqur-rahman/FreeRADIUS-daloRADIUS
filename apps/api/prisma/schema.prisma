@@ -102,11 +102,12 @@ model User {
   status      UserStatus @default(active)
   validFrom   DateTime?
   validUntil  DateTime?
-  mfaEnabled  Boolean    @default(false)
-  mfaSecret   String?    @db.VarChar(255)
-  lastLoginAt DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  mfaEnabled   Boolean    @default(false)
+  mfaSecret    String?    @db.VarChar(255)
+  certEnabled  Boolean    @default(true)  // can user generate/use WiFi certificates?
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   secret      UserSecret?
   groups      UserGroup[]
