@@ -225,6 +225,7 @@ export interface DeviceApprovalEntry {
   notes: string | null;
 }
 
+
 export interface DeviceDecisionRequest {
   status: "approved" | "rejected" | "blocked";
   notes?: string | null;

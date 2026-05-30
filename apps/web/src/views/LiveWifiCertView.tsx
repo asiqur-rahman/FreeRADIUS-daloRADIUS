@@ -23,9 +23,7 @@ import { apiDownload } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
 function CertStatusBadge({ cert }: { cert: UserClientCert }) {
-  const now = new Date();
-  const expired = new Date(cert.expiresAt) < now;
-  if (cert.revokedAt) return <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700">Revoked</span>;
+  const expired = new Date(cert.expiresAt) < new Date();
   if (expired) return <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Expired</span>;
   return <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Active</span>;
 }
@@ -295,7 +293,7 @@ export function LiveWifiCertView() {
 
   useEffect(() => { loadCerts(); }, [loadCerts]);
 
-  const activeCerts = certs.filter((c) => !c.revokedAt && new Date(c.expiresAt) >= new Date());
+  const activeCerts = certs.filter((c) => new Date(c.expiresAt) >= new Date());
 
   const handleProvision = async () => {
     if (!token) return;
@@ -318,9 +316,9 @@ export function LiveWifiCertView() {
     try {
       await revokeMyCert(token, certId);
       await loadCerts();
-      setNotice({ ok: true, text: "Certificate revoked. Existing sessions using this cert will be blocked at next re-auth." });
+      setNotice({ ok: true, text: "Certificate deleted. Generate a new one any time." });
     } catch (err) {
-      setNotice({ ok: false, text: err instanceof Error ? err.message : "Failed to revoke certificate" });
+      setNotice({ ok: false, text: err instanceof Error ? err.message : "Failed to delete certificate" });
     } finally {
       setRevoking(null);
     }
@@ -415,7 +413,7 @@ export function LiveWifiCertView() {
         </div>
         {userSelfService && (
           <p className="text-[11px] text-stone-400">
-            You can generate multiple certificates — useful for different devices or to replace a lost one. The public cert is always re-downloadable from the list below. The .p12 file must be saved at creation time — the private key is not stored on the server.
+            Generating a new certificate replaces your existing one. Save the .p12 file immediately — the private key is not stored on the server. The password is always visible in the cert list below.
           </p>
         )}
       </div>
@@ -426,7 +424,7 @@ export function LiveWifiCertView() {
           <div>
             <h3 className="font-semibold text-stone-900">Your certificates</h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              {loading ? "Loading…" : `${activeCerts.length} active${certs.length > activeCerts.length ? `, ${certs.length - activeCerts.length} revoked/expired` : ""}`}
+              {loading ? "Loading…" : activeCerts.length === 0 ? "No active certificate" : "1 active certificate"}
             </p>
           </div>
         </div>
@@ -452,14 +450,12 @@ export function LiveWifiCertView() {
         {!loading && !error && certs.length > 0 && (
           <div className="space-y-2">
             {certs.map((cert) => {
-              const isActive = !cert.revokedAt && new Date(cert.expiresAt) >= new Date();
+              const isActive = new Date(cert.expiresAt) >= new Date();
               return (
                 <div
                   key={cert.id}
                   className={`flex items-start gap-4 p-4 rounded-xl border transition-colors ${
-                    isActive
-                      ? "bg-stone-50 border-stone-200"
-                      : "bg-stone-50/40 border-stone-100 opacity-60"
+                    isActive ? "bg-stone-50 border-stone-200" : "bg-stone-50/40 border-stone-100 opacity-60"
                   }`}
                 >
                   <Key className={`w-4 h-4 flex-shrink-0 mt-1 ${isActive ? "text-indigo-600" : "text-stone-400"}`} />
@@ -468,7 +464,6 @@ export function LiveWifiCertView() {
                     <div className="text-xs text-stone-500 mt-0.5 truncate font-mono">{cert.fingerprint}</div>
                     <div className="text-xs text-stone-400 mt-0.5">
                       Expires {new Date(cert.expiresAt).toLocaleDateString()}
-                      {cert.revokedAt && ` · Revoked ${new Date(cert.revokedAt).toLocaleDateString()}`}
                       {cert.notes && ` · ${cert.notes}`}
                     </div>
                     {isActive && cert.pkcs12Password && (
@@ -485,10 +480,8 @@ export function LiveWifiCertView() {
                           const a = document.createElement("a");
                           a.href = url;
                           a.download = `${cert.commonName}-cert.pem`;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
+                          document.body.appendChild(a); a.click();
+                          document.body.removeChild(a); URL.revokeObjectURL(url);
                         }}
                         className="p-2 hover:bg-indigo-50 rounded-lg text-stone-400 hover:text-indigo-600 transition-colors"
                         title="Download certificate (.pem)"
@@ -501,13 +494,9 @@ export function LiveWifiCertView() {
                         onClick={() => handleRevoke(cert.id)}
                         disabled={revoking === cert.id}
                         className="p-2 hover:bg-rose-50 rounded-lg text-stone-400 hover:text-rose-600 transition-colors disabled:opacity-50"
-                        title="Revoke certificate"
+                        title="Delete certificate"
                       >
-                        {revoking === cert.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
+                        {revoking === cert.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                       </button>
                     )}
                   </div>

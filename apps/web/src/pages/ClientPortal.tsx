@@ -13,6 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { useTheme } from "../theme/ThemeContext";
 import { LiveConnectionGuideView } from "../views/LiveConnectionGuideView";
 import { LivePortalOverview } from "../views/LivePortalOverview";
 import { LiveProfileView } from "../views/LiveProfileView";
@@ -119,6 +121,7 @@ export default function ClientPortal() {
   const [view, setView] = useState<PortalView>("overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
+  const { isWhiteTheme } = useTheme();
 
   const activeItem = useMemo<PortalNavItem>(
     () => portalItems.find((item) => item.id === view) ?? portalItems[0]!,
@@ -151,8 +154,9 @@ export default function ClientPortal() {
     <div
       className="min-h-screen bg-transparent text-slate-900"
       style={{
-        background:
-          "radial-gradient(circle at top left, rgba(14,165,233,0.12), transparent 28%), radial-gradient(circle at 85% 0%, rgba(20,184,166,0.1), transparent 24%), linear-gradient(180deg, #f6f8fb 0%, #eef2f7 48%, #e8edf4 100%)",
+        background: isWhiteTheme
+          ? "radial-gradient(circle at top left, rgba(14,165,233,0.1), transparent 28%), radial-gradient(circle at 85% 0%, rgba(20,184,166,0.08), transparent 24%), linear-gradient(180deg, #f8fafc 0%, #f1f5f9 48%, #edf2f7 100%)"
+          : "radial-gradient(circle at top left, rgba(14,165,233,0.12), transparent 28%), radial-gradient(circle at 85% 0%, rgba(20,184,166,0.1), transparent 24%), linear-gradient(180deg, #f6f8fb 0%, #eef2f7 48%, #e8edf4 100%)",
       }}
     >
       <div className="pointer-events-none fixed inset-0 opacity-[0.35]">
@@ -186,6 +190,7 @@ export default function ClientPortal() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <ThemeToggle compact />
                 <button className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white/85 text-slate-500 transition hover:bg-white hover:text-slate-950">
                   <Bell className="h-4.5 w-4.5" />
                 </button>
@@ -231,6 +236,7 @@ export default function ClientPortal() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <ThemeToggle />
                 <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white/80 text-slate-500 transition hover:bg-white hover:text-slate-950">
                   <Bell className="h-4.5 w-4.5" />
                 </button>
@@ -490,12 +496,15 @@ export default function ClientPortal() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500"
-                >
-                  <X className="h-4.5 w-4.5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <ThemeToggle compact />
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500"
+                  >
+                    <X className="h-4.5 w-4.5" />
+                  </button>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-2">

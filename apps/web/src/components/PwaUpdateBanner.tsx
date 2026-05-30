@@ -1,7 +1,9 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { RefreshCw, X } from "lucide-react";
+import { useTheme } from "../theme/ThemeContext";
 
 export function PwaUpdateBanner() {
+  const { isWhiteTheme } = useTheme();
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
@@ -20,9 +22,9 @@ export function PwaUpdateBanner() {
       aria-live="polite"
       className="fixed left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 bottom-[calc(13rem+env(safe-area-inset-bottom))] md:bottom-auto md:top-4"
     >
-      <div className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-zinc-900/95 px-4 py-3 shadow-2xl backdrop-blur-sm">
+      <div className={`flex items-center gap-3 rounded-[24px] border px-4 py-3 shadow-2xl backdrop-blur-sm ${isWhiteTheme ? "border-slate-200 bg-white/95" : "border-white/10 bg-zinc-900/95"}`}>
         <RefreshCw className="h-4 w-4 shrink-0 text-blue-400" />
-        <p className="flex-1 text-sm text-zinc-200">
+        <p className={`flex-1 text-sm ${isWhiteTheme ? "text-slate-700" : "text-zinc-200"}`}>
           A new version is available.
         </p>
         <button
@@ -34,7 +36,7 @@ export function PwaUpdateBanner() {
         <button
           onClick={() => setNeedRefresh(false)}
           aria-label="Dismiss"
-          className="rounded-full p-1 text-zinc-500 transition-colors hover:text-zinc-300"
+          className={`rounded-full p-1 transition-colors ${isWhiteTheme ? "text-slate-400 hover:text-slate-700" : "text-zinc-500 hover:text-zinc-300"}`}
         >
           <X className="h-4 w-4" />
         </button>

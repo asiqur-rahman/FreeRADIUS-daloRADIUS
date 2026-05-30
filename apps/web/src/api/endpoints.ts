@@ -12,7 +12,6 @@ import type {
   CreateDeviceRequest,
   AuthenticationEvent,
   AuditLogEntry,
-  DeviceApprovalEntry,
   DeviceDecisionRequest,
   FreeRadiusReloadResult,
   SessionDisconnectResponse,
@@ -104,6 +103,16 @@ export function createGroupAttribute(token: string, id: string, body: CreateGrou
 export function deleteGroupAttribute(token: string, id: string, attrId: string) {
   return api<{ ok: true }>(`${v1}/admin/groups/${id}/attributes/${attrId}`, { method: "DELETE", token });
 }
+export interface GroupPolicy {
+  vlanId:            number | null;
+  downloadMbps:      number | null;
+  uploadMbps:        number | null;
+  sessionTimeoutSec: number | null;
+  idleTimeoutSec:    number | null;
+}
+export function updateGroupPolicy(token: string, id: string, body: GroupPolicy) {
+  return api<GroupSummary>(`${v1}/admin/groups/${id}/policy`, { method: "PUT", token, body });
+}
 
 // ── NAS ──────────────────────────────────────────────────────────────
 export function listNas(token: string) {
@@ -175,19 +184,6 @@ export function decideAdminDevice(token: string, id: string, body: DeviceDecisio
     disconnectAttempts: Array<{ sessionId: string; result: SessionDisconnectResponse["result"] }>;
     device: AdminDeviceSummary;
   }>(`${v1}/admin/devices/${id}`, { method: "PATCH", token, body });
-}
-export function listDeviceApprovals(
-  token: string,
-  q?: { status?: "pending" | "approved" | "rejected" | "blocked"; userId?: string; search?: string; page?: number; pageSize?: number },
-) {
-  const params = new URLSearchParams();
-  if (q?.status) params.set("status", q.status);
-  if (q?.userId) params.set("userId", q.userId);
-  if (q?.search) params.set("search", q.search);
-  if (q?.page) params.set("page", String(q.page));
-  if (q?.pageSize) params.set("pageSize", String(q.pageSize));
-  const qs = params.toString();
-  return api<Paginated<DeviceApprovalEntry>>(`${v1}/admin/approvals${qs ? `?${qs}` : ""}`, { token });
 }
 // -- Self-service devices ----------------------------------------------------
 export function listMyDevices(token: string) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Share2, Smartphone, Sparkles, X, Zap } from "lucide-react";
+import { useTheme } from "../theme/ThemeContext";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -38,6 +39,7 @@ function rememberDismissal() {
 }
 
 export function PwaInstallPrompt() {
+  const { isWhiteTheme } = useTheme();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [mode, setMode] = useState<PromptMode>(null);
   const [visible, setVisible] = useState(false);
@@ -136,8 +138,8 @@ export function PwaInstallPrompt() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-3 pb-3 safe-bottom md:bottom-4 md:right-4 md:left-auto md:w-full md:max-w-sm md:px-0 md:pb-0">
-      <div className="pointer-events-auto mx-auto max-w-xl md:mx-0 md:max-w-sm">
-        <div className="surface-dark-strong card-rise relative overflow-hidden rounded-[30px]">
+        <div className="pointer-events-auto mx-auto max-w-xl md:mx-0 md:max-w-sm">
+        <div className={`${isWhiteTheme ? "theme-surface-strong" : "surface-dark-strong"} card-rise relative overflow-hidden rounded-[30px]`}>
           <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-sky-400/18 via-cyan-300/10 to-teal-400/18 blur-2xl" />
           <div className="relative px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
             <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-white/12 md:hidden" />
@@ -148,13 +150,13 @@ export function PwaInstallPrompt() {
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] uppercase tracking-[0.28em] text-sky-300">
+                <div className={`text-[11px] uppercase tracking-[0.28em] ${isWhiteTheme ? "text-sky-600" : "text-sky-300"}`}>
                   {body.eyebrow}
                 </div>
-                <h3 className="mt-2 text-lg font-semibold tracking-tight text-white">
+                <h3 className={`mt-2 text-lg font-semibold tracking-tight ${isWhiteTheme ? "text-slate-950" : "text-white"}`}>
                   {body.title}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-slate-400">
+                <p className={`mt-2 text-sm leading-6 ${isWhiteTheme ? "text-slate-600" : "text-slate-400"}`}>
                   {body.description}
                 </p>
               </div>
@@ -162,7 +164,7 @@ export function PwaInstallPrompt() {
               <button
                 onClick={handleDismiss}
                 aria-label="Dismiss install prompt"
-                className="rounded-full p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+                className={`rounded-full p-1.5 transition ${isWhiteTheme ? "text-slate-500 hover:bg-slate-100 hover:text-slate-950" : "text-slate-500 hover:bg-white/5 hover:text-slate-300"}`}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -174,12 +176,12 @@ export function PwaInstallPrompt() {
                 return (
                   <div
                     key={benefit.label}
-                    className="rounded-[20px] border border-white/6 bg-white/[0.03] px-3 py-3 text-center"
+                    className={`rounded-[20px] border px-3 py-3 text-center ${isWhiteTheme ? "border-slate-200 bg-slate-50/90" : "border-white/6 bg-white/[0.03]"}`}
                   >
-                    <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl bg-white/[0.05] text-sky-200">
+                    <div className={`mx-auto flex h-9 w-9 items-center justify-center rounded-2xl ${isWhiteTheme ? "bg-white text-sky-600" : "bg-white/[0.05] text-sky-200"}`}>
                       <Icon className="h-4 w-4" />
                     </div>
-                    <div className="mt-2 text-[11px] font-medium leading-4 text-slate-300">
+                    <div className={`mt-2 text-[11px] font-medium leading-4 ${isWhiteTheme ? "text-slate-700" : "text-slate-300"}`}>
                       {benefit.label}
                     </div>
                   </div>
@@ -188,15 +190,15 @@ export function PwaInstallPrompt() {
             </div>
 
             {mode === "ios" && (
-              <div className="mt-4 rounded-[22px] border border-white/6 bg-white/[0.03] px-4 py-4 text-sm text-slate-300">
-                <div className="font-medium text-white">How to install</div>
+              <div className={`mt-4 rounded-[22px] border px-4 py-4 text-sm ${isWhiteTheme ? "border-slate-200 bg-slate-50/90 text-slate-700" : "border-white/6 bg-white/[0.03] text-slate-300"}`}>
+                <div className={`font-medium ${isWhiteTheme ? "text-slate-950" : "text-white"}`}>How to install</div>
                 <div className="mt-3 flex items-start gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-sky-200">
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl ${isWhiteTheme ? "bg-white text-sky-600" : "bg-white/[0.06] text-sky-200"}`}>
                     <Share2 className="h-4 w-4" />
                   </div>
                   <div className="leading-6">
-                    Tap <span className="font-medium text-white">Share</span>, then choose{" "}
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2 py-0.5 text-xs text-white">
+                    Tap <span className={`font-medium ${isWhiteTheme ? "text-slate-950" : "text-white"}`}>Share</span>, then choose{" "}
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${isWhiteTheme ? "bg-white text-slate-950" : "bg-white/[0.06] text-white"}`}>
                       <Plus className="h-3 w-3" />
                       Add to Home Screen
                     </span>
@@ -223,7 +225,7 @@ export function PwaInstallPrompt() {
               </button>
               <button
                 onClick={handleDismiss}
-                className="rounded-[18px] border border-white/8 px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
+                className={`rounded-[18px] border px-4 py-3 text-sm font-medium transition ${isWhiteTheme ? "border-slate-200 text-slate-600 hover:bg-white hover:text-slate-950" : "border-white/8 text-slate-300 hover:bg-white/[0.05] hover:text-white"}`}
               >
                 Later
               </button>

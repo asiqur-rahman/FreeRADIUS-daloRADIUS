@@ -154,6 +154,86 @@ const adminGroups: FastifyPluginAsync = async (app) => {
       return { ok: true };
     },
   );
+
+  // ── PUT /groups/:id/policy — atomic VLAN + bandwidth convenience endpoint ───
+  //  Replaces the 5 managed attributes (Tunnel-*, WISPr-Bandwidth-*) in a single
+  //  transaction so CoA is triggered exactly once.
+
+  const PolicyBody = z.object({
+    vlanId:           z.number().int().min(1).max(4094).nullable(),
+    downloadMbps:     z.number().positive().max(100_000).nullable(),
+    uploadMbps:       z.number().positive().max(100_000).nullable(),
+    sessionTimeoutSec: z.number().int().min(60).max(604_800).nullable(), // 1 min – 7 days
+    idleTimeoutSec:   z.number().int().min(60).max(86_400).nullable(),   // 1 min – 24 h
+  });
+
+  const MANAGED_ATTRS = [
+    "Tunnel-Type", "Tunnel-Medium-Type", "Tunnel-Private-Group-ID",
+    "WISPr-Bandwidth-Max-Down", "WISPr-Bandwidth-Max-Up",
+    "Session-Timeout", "Idle-Timeout",
+  ];
+
+  app.put<{ Params: { id: string } }>("/groups/:id/policy", async (req) => {
+    const body    = PolicyBody.parse(req.body);
+    const actorId = req.currentUser!.sub;
+    const { id }  = req.params;
+
+    const group = await prisma.group.findUnique({ where: { id } });
+    if (!group) throw NotFound("Group not found");
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Remove all previously managed attributes
+      await tx.groupAttribute.deleteMany({
+        where: { groupId: id, attribute: { in: MANAGED_ATTRS } },
+      });
+
+      // 2. Re-insert from request (skip null fields)
+      const toInsert: Array<{ groupId: string; attribute: string; op: string; value: string; kind: string }> = [];
+
+      if (body.vlanId !== null) {
+        // Only insert the ID — Tunnel-Type and Tunnel-Medium-Type are auto-completed
+        // in replyFromGroups() inside radius.ts (lines 98–102).
+        toInsert.push({ groupId: id, attribute: "Tunnel-Private-Group-ID", op: ":=", value: String(body.vlanId), kind: "reply" });
+      }
+      if (body.downloadMbps !== null) {
+        toInsert.push({ groupId: id, attribute: "WISPr-Bandwidth-Max-Down", op: ":=", value: String(Math.round(body.downloadMbps * 1024 * 1024)), kind: "reply" });
+      }
+      if (body.uploadMbps !== null) {
+        toInsert.push({ groupId: id, attribute: "WISPr-Bandwidth-Max-Up", op: ":=", value: String(Math.round(body.uploadMbps * 1024 * 1024)), kind: "reply" });
+      }
+      if (body.sessionTimeoutSec !== null) {
+        toInsert.push({ groupId: id, attribute: "Session-Timeout", op: ":=", value: String(body.sessionTimeoutSec), kind: "reply" });
+      }
+      if (body.idleTimeoutSec !== null) {
+        toInsert.push({ groupId: id, attribute: "Idle-Timeout", op: ":=", value: String(body.idleTimeoutSec), kind: "reply" });
+      }
+
+      if (toInsert.length > 0) {
+        await tx.groupAttribute.createMany({ data: toInsert });
+      }
+
+      // 3. Sync to radgroupreply
+      await syncGroupToRadius(tx, id);
+
+      await audit({
+        tx,
+        actorId,
+        action: "group_update",
+        targetType: "group",
+        targetId: id,
+        metadata: { policy: body },
+        req,
+      });
+    });
+
+    await disconnectMembersIfEnabled(id, actorId, req);
+
+    // Return the full updated group (same shape as GET /groups)
+    return prisma.group.findUnique({
+      where: { id },
+      include: { attributes: true, _count: { select: { members: true } } },
+    });
+  });
 };
 
 export default adminGroups;
