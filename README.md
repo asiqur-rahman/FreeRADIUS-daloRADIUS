@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/web/public/icons/icon-192.png" alt="Nexara Logo" width="80" height="80" />
+<img src="docs/logo.svg" alt="Nexara Logo" width="80" height="80" />
 
 # Nexara
 

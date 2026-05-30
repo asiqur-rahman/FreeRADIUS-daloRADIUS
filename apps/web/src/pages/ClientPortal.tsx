@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Bell,
@@ -182,7 +182,7 @@ export default function ClientPortal() {
                 </div>
                 <div className="min-w-0">
                   <div className="text-[11px] uppercase tracking-[0.3em] text-slate-500">
-                    RadiusOps
+                    Nexara
                   </div>
                   <div className="truncate text-[15px] font-semibold tracking-tight text-slate-950">
                     {activeItem.label}
@@ -218,7 +218,7 @@ export default function ClientPortal() {
                   </div>
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.3em] text-slate-500">
-                      RadiusOps
+                      Nexara
                     </div>
                     <div className="mt-1 text-base font-semibold tracking-tight text-slate-950">
                       My Wi-Fi
